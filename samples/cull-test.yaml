@@ -1,0 +1,25 @@
+apiVersion: nerc.mghpcc.org/v1alpha1
+kind: Course
+metadata:
+  name: cull-test
+  namespace: mm-test
+spec:
+  courseCode: "TEST101"
+  semester: "Spring2026"
+  displayName: "Pod Culling Test Course"
+  professors:
+    - "professor@test.edu"
+  deployment:
+    multiNamespace: true
+    namespaceTemplate: "test-{{.Username}}"
+    studentNamespacePrefix: "test-student-"
+  resourceQuota:
+    cpu: "2"
+    memory: "4Gi"
+    pods: "5"
+  notebookCulling:
+    enabled: true
+    cutoff: 300
+status:
+  namespaces:
+    - "mm-test"
