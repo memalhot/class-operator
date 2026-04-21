@@ -1,4 +1,4 @@
-module github.com/memalhot/class-op.git
+module github.com/memalhot/class-operator
 
 go 1.25.0
 

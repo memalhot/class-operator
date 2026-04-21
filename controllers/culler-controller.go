@@ -12,7 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	nercv1alpha1 "github.com/memalhot/class-op.git/v1alpha1"
+	nercv1alpha1 "github.com/memalhot/class-operator/v1alpha1"
 )
 
 type CourseReconciler struct {
