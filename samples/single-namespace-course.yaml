@@ -1,0 +1,26 @@
+apiVersion: nerc.mghpcc.org/v1alpha1
+kind: Course
+metadata:
+  name: test-course
+  namespace: default
+spec:
+  courseCode: "test101"
+  semester: "Spring2026"
+  displayName: "Test Course for Single Namespace"
+  professors:
+    - "professor@university.edu"
+
+  # Single namespace deployment
+  deployment:
+    multiNamespace: false
+
+  studentsGroup: "cs101-students"
+
+  resourceQuota:
+    cpu: "2"
+    memory: "4Gi"
+    pods: "5"
+
+  notebookCulling:
+    enabled: true
+    cutoff: 3600

@@ -1,0 +1,29 @@
+apiVersion: nerc.mghpcc.org/v1alpha1
+kind: Course
+metadata:
+  name: multi-test-course
+  namespace: default
+spec:
+  courseCode: "CS202"
+  semester: "Spring2026"
+  displayName: "Multi-Namespace Test Course"
+  professors:
+    - "professor@university.edu"
+
+  # Multi-namespace deployment - creates namespace per user
+  deployment:
+    multiNamespace: true
+    namespaceTemplate: "cs202-{{.Username}}"
+    studentNamespacePrefix: "cs202-"
+
+  # OpenShift group containing students
+  studentsGroup: "cs202-students"
+
+  resourceQuota:
+    cpu: "2"
+    memory: "4Gi"
+    pods: "5"
+
+  notebookCulling:
+    enabled: true
+    cutoff: 3600
