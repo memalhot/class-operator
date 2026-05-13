@@ -59,11 +59,11 @@ kind create cluster --name ${CLUSTER_NAME}
 echo -e "${GREEN}✓ Cluster created${NC}"
 echo ""
 
-# Step 2: Install Course CRD
-echo -e "${YELLOW}[2/9] Installing Course CRD...${NC}"
-kubectl apply -f config/crd/nerc.mghpcc.org_courses.yaml
+# Step 2: Install Class CRD
+echo -e "${YELLOW}[2/9] Installing Class CRD...${NC}"
+kubectl apply -f config/crd/nerc.mghpcc.org_classes.yaml
 sleep 2
-kubectl get crd courses.nerc.mghpcc.org
+kubectl get crd classes.nerc.mghpcc.org
 echo -e "${GREEN}✓ CRD installed${NC}"
 echo ""
 
@@ -129,15 +129,15 @@ fi
 echo -e "${GREEN}✓ Operator started (PID: $OPERATOR_PID)${NC}"
 echo ""
 
-# Step 6: Test single-namespace course
-echo -e "${YELLOW}[6/9] Testing single-namespace course creation...${NC}"
-kubectl apply -f samples/single-namespace-course.yaml
+# Step 6: Test single-namespace class
+echo -e "${YELLOW}[6/9] Testing single-namespace class creation...${NC}"
+kubectl apply -f samples/single-namespace-class.yaml
 sleep 3
 
 # Verify single-namespace
-NAMESPACE_NAME=$(kubectl get course test-course -o jsonpath='{.status.namespaces[0]}' 2>/dev/null || echo "")
+NAMESPACE_NAME=$(kubectl get class test-class -o jsonpath='{.status.namespaces[0]}' 2>/dev/null || echo "")
 if [ -z "$NAMESPACE_NAME" ]; then
-    echo -e "${RED}✗ Failed to create single-namespace course${NC}"
+    echo -e "${RED}✗ Failed to create single-namespace class${NC}"
     exit 1
 fi
 
@@ -146,8 +146,8 @@ if [ $? -eq 0 ]; then
     echo -e "${GREEN}✓ Single-namespace created: $NAMESPACE_NAME${NC}"
 
     # Verify labels
-    COURSE_LABEL=$(kubectl get namespace $NAMESPACE_NAME -o jsonpath='{.metadata.labels.nerc\.mghpcc\.org/course}')
-    if [ "$COURSE_LABEL" == "test-course" ]; then
+    CLASS_LABEL=$(kubectl get namespace $NAMESPACE_NAME -o jsonpath='{.metadata.labels.nerc\.mghpcc\.org/class}')
+    if [ "$CLASS_LABEL" == "test-class" ]; then
         echo -e "${GREEN}✓ Namespace labels verified${NC}"
     else
         echo -e "${RED}✗ Namespace labels incorrect${NC}"
@@ -155,9 +155,9 @@ if [ $? -eq 0 ]; then
     fi
 
     # Verify finalizer
-    FINALIZER=$(kubectl get course test-course -o jsonpath='{.metadata.finalizers[0]}')
-    if [ "$FINALIZER" == "nerc.mghpcc.org/course-finalizer" ]; then
-        echo -e "${GREEN}✓ Finalizer added to course${NC}"
+    FINALIZER=$(kubectl get class test-class -o jsonpath='{.metadata.finalizers[0]}')
+    if [ "$FINALIZER" == "nerc.mghpcc.org/class-finalizer" ]; then
+        echo -e "${GREEN}✓ Finalizer added to class${NC}"
     else
         echo -e "${RED}✗ Finalizer not found${NC}"
         exit 1
@@ -168,22 +168,22 @@ else
 fi
 echo ""
 
-# Step 7: Test multi-namespace course
-echo -e "${YELLOW}[7/9] Testing multi-namespace course creation...${NC}"
-kubectl apply -f samples/multi-namespace-course.yaml
+# Step 7: Test multi-namespace class
+echo -e "${YELLOW}[7/9] Testing multi-namespace class creation...${NC}"
+kubectl apply -f samples/multi-namespace-class.yaml
 sleep 5
 
 # Verify multi-namespaces
 EXPECTED_COUNT=4
 sleep 5
-ACTUAL_COUNT=$(kubectl get namespaces -l nerc.mghpcc.org/course=multi-test-course --no-headers | wc -l)
+ACTUAL_COUNT=$(kubectl get namespaces -l nerc.mghpcc.org/class=multi-test-class --no-headers | wc -l)
 
 if [ "$ACTUAL_COUNT" -eq "$EXPECTED_COUNT" ]; then
     echo -e "${GREEN}✓ Multi-namespaces created: $ACTUAL_COUNT namespaces${NC}"
-    kubectl get namespaces -l nerc.mghpcc.org/course=multi-test-course
+    kubectl get namespaces -l nerc.mghpcc.org/class=multi-test-class
 
     # Verify hash suffix
-    NAMESPACE_WITH_HASH=$(kubectl get namespaces -l nerc.mghpcc.org/course=multi-test-course -o jsonpath='{.items[0].metadata.name}')
+    NAMESPACE_WITH_HASH=$(kubectl get namespaces -l nerc.mghpcc.org/class=multi-test-class -o jsonpath='{.items[0].metadata.name}')
     if [[ $NAMESPACE_WITH_HASH =~ -[a-f0-9]{6}$ ]]; then
         echo -e "${GREEN}✓ Namespaces have hash suffix${NC}"
     else
@@ -213,15 +213,15 @@ else
     exit 1
 fi
 
-# Trigger reconciliation by annotating the course
+# Trigger reconciliation by annotating the class
 echo "Triggering reconciliation..."
-kubectl annotate course multi-test-course reconcile-trigger=$(date +%s) --overwrite
+kubectl annotate class multi-test-class reconcile-trigger=$(date +%s) --overwrite
 sleep 5
 
 # Wait for operator to reconcile (may take a moment)
 echo "Waiting for namespace creation (up to 15 seconds)..."
 for i in {1..15}; do
-    EVE_NAMESPACE=$(kubectl get namespaces -l nerc.mghpcc.org/course=multi-test-course -o jsonpath='{.items[*].metadata.name}' | grep -o 'cs202-eve-[a-f0-9]\{6\}' || echo "")
+    EVE_NAMESPACE=$(kubectl get namespaces -l nerc.mghpcc.org/class=multi-test-class -o jsonpath='{.items[*].metadata.name}' | grep -o 'cs202-eve-[a-f0-9]\{6\}' || echo "")
     if [ ! -z "$EVE_NAMESPACE" ]; then
         break
     fi
@@ -234,8 +234,8 @@ if [ ! -z "$EVE_NAMESPACE" ]; then
     echo -e "${GREEN}✓ New namespace created for eve: $EVE_NAMESPACE${NC}"
 
     # Verify it has the correct labels
-    COURSE_LABEL=$(kubectl get namespace $EVE_NAMESPACE -o jsonpath='{.metadata.labels.nerc\.mghpcc\.org/course}')
-    if [ "$COURSE_LABEL" == "multi-test-course" ]; then
+    CLASS_LABEL=$(kubectl get namespace $EVE_NAMESPACE -o jsonpath='{.metadata.labels.nerc\.mghpcc\.org/class}')
+    if [ "$CLASS_LABEL" == "multi-test-class" ]; then
         echo -e "${GREEN}✓ New namespace has correct labels${NC}"
     else
         echo -e "${RED}✗ New namespace labels incorrect${NC}"
@@ -243,51 +243,51 @@ if [ ! -z "$EVE_NAMESPACE" ]; then
     fi
 
     # Verify total namespace count is now 5
-    TOTAL_COUNT=$(kubectl get namespaces -l nerc.mghpcc.org/course=multi-test-course --no-headers | wc -l)
+    TOTAL_COUNT=$(kubectl get namespaces -l nerc.mghpcc.org/class=multi-test-class --no-headers | wc -l)
     if [ "$TOTAL_COUNT" -eq 5 ]; then
         echo -e "${GREEN}✓ Total namespaces: $TOTAL_COUNT (alice, bob, charlie, david, eve)${NC}"
     else
         echo -e "${RED}✗ Expected 5 namespaces, found $TOTAL_COUNT${NC}"
-        kubectl get namespaces -l nerc.mghpcc.org/course=multi-test-course
+        kubectl get namespaces -l nerc.mghpcc.org/class=multi-test-class
         exit 1
     fi
 else
     echo -e "${RED}✗ Namespace for eve was not created after reconciliation${NC}"
     echo "Current namespaces:"
-    kubectl get namespaces -l nerc.mghpcc.org/course=multi-test-course
+    kubectl get namespaces -l nerc.mghpcc.org/class=multi-test-class
     exit 1
 fi
 echo ""
 
 # Step 9: Test namespace cleanup on deletion
-echo -e "${YELLOW}[9/9] Testing namespace cleanup on course deletion...${NC}"
+echo -e "${YELLOW}[9/9] Testing namespace cleanup on class deletion...${NC}"
 
-# Delete multi-namespace course
-echo "Deleting multi-namespace course..."
-kubectl delete course multi-test-course
+# Delete multi-namespace class
+echo "Deleting multi-namespace class..."
+kubectl delete class multi-test-class
 sleep 5
 
 # Verify namespaces were deleted
-REMAINING=$(kubectl get namespaces -l nerc.mghpcc.org/course=multi-test-course --no-headers 2>/dev/null | wc -l)
+REMAINING=$(kubectl get namespaces -l nerc.mghpcc.org/class=multi-test-class --no-headers 2>/dev/null | wc -l)
 if [ "$REMAINING" -eq 0 ]; then
-    echo -e "${GREEN}✓ Multi-namespace course namespaces cleaned up${NC}"
+    echo -e "${GREEN}✓ Multi-namespace class namespaces cleaned up${NC}"
 else
-    echo -e "${RED}✗ $REMAINING namespaces still exist after course deletion${NC}"
-    kubectl get namespaces -l nerc.mghpcc.org/course=multi-test-course
+    echo -e "${RED}✗ $REMAINING namespaces still exist after class deletion${NC}"
+    kubectl get namespaces -l nerc.mghpcc.org/class=multi-test-class
     exit 1
 fi
 
-# Delete single-namespace course
-echo "Deleting single-namespace course..."
-kubectl delete course test-course
+# Delete single-namespace class
+echo "Deleting single-namespace class..."
+kubectl delete class test-class
 sleep 5
 
 # Verify namespace was deleted
 kubectl get namespace $NAMESPACE_NAME > /dev/null 2>&1
 if [ $? -ne 0 ]; then
-    echo -e "${GREEN}✓ Single-namespace course namespace cleaned up${NC}"
+    echo -e "${GREEN}✓ Single-namespace class namespace cleaned up${NC}"
 else
-    echo -e "${RED}✗ Namespace $NAMESPACE_NAME still exists after course deletion${NC}"
+    echo -e "${RED}✗ Namespace $NAMESPACE_NAME still exists after class deletion${NC}"
     exit 1
 fi
 echo ""
@@ -299,12 +299,12 @@ echo -e "${GREEN}========================================${NC}"
 echo ""
 echo "Test Summary:"
 echo "  ✓ Kind cluster created and configured"
-echo "  ✓ CRDs installed (Course, Group)"
+echo "  ✓ CRDs installed (Class, Group)"
 echo "  ✓ Operator started successfully"
-echo "  ✓ Single-namespace course created with labels and finalizer"
-echo "  ✓ Multi-namespace course created (4 namespaces with hash suffix)"
+echo "  ✓ Single-namespace class created with labels and finalizer"
+echo "  ✓ Multi-namespace class created (4 namespaces with hash suffix)"
 echo "  ✓ Dynamic user addition triggers reconciliation (5th namespace created)"
-echo "  ✓ Namespace cleanup works on course deletion (finalizers)"
+echo "  ✓ Namespace cleanup works on class deletion (finalizers)"
 echo ""
 echo "Operator logs saved to: /tmp/operator-test.log"
 echo ""

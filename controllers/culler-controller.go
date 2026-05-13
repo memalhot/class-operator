@@ -19,7 +19,7 @@ import (
 	nercv1alpha1 "github.com/memalhot/class-operator/v1alpha1"
 )
 
-type CourseReconciler struct {
+type ClassCullerReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
@@ -30,16 +30,16 @@ type UserCutoffInfo struct {
 	Cutoff    int
 }
 
-// +kubebuilder:rbac:groups=nerc.mghpcc.org,resources=courses,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=nerc.mghpcc.org,resources=courses/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=nerc.mghpcc.org,resources=courses/finalizers,verbs=update
+// +kubebuilder:rbac:groups=nerc.mghpcc.org,resources=classes,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=nerc.mghpcc.org,resources=classes/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=nerc.mghpcc.org,resources=classes/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 // +kubebuilder:rbac:groups=kubeflow.org,resources=notebooks,verbs=get;list;watch;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;delete
 // +kubebuilder:rbac:groups=user.openshift.io,resources=groups,verbs=get;list;watch
 
 // getGroupUsers retrieves users from an OpenShift group
-func (r *CourseReconciler) getGroupUsers(ctx context.Context, groupName string) ([]string, error) {
+func (r *ClassCullerReconciler) getGroupUsers(ctx context.Context, groupName string) ([]string, error) {
 	log := log.FromContext(ctx)
 
 	if groupName == "" {
@@ -75,47 +75,47 @@ func getNotebookUsername(notebook *unstructured.Unstructured) string {
 	return ""
 }
 
-// buildUserCutoffMap creates a map of username -> cutoff info from all courses in a namespace
-// If a user is in multiple courses, the higher (more lenient) cutoff wins
-func (r *CourseReconciler) buildUserCutoffMap(ctx context.Context, namespace string) (map[string]UserCutoffInfo, error) {
+// buildUserCutoffMap creates a map of username -> cutoff info from all classes in a namespace
+// If a user is in multiple classes, the higher (more lenient) cutoff wins
+func (r *ClassCullerReconciler) buildUserCutoffMap(ctx context.Context, namespace string) (map[string]UserCutoffInfo, error) {
 	log := log.FromContext(ctx)
 
-	// List all courses
-	courseList := &nercv1alpha1.CourseList{}
-	if err := r.List(ctx, courseList); err != nil {
-		return nil, fmt.Errorf("failed to list courses: %w", err)
+	// List all classes
+	classList := &nercv1alpha1.ClassList{}
+	if err := r.List(ctx, classList); err != nil {
+		return nil, fmt.Errorf("failed to list classes: %w", err)
 	}
 
 	userMap := make(map[string]UserCutoffInfo)
 
-	// Find all courses that manage this namespace
-	for _, course := range courseList.Items {
+	// Find all classes that manage this namespace
+	for _, class := range classList.Items {
 		// Skip if culling not enabled
-		if !course.Spec.NotebookCulling.Enabled {
+		if !class.Spec.NotebookCulling.Enabled {
 			continue
 		}
 
 		// Skip if cutoff is invalid
-		if course.Spec.NotebookCulling.Cutoff <= 0 {
+		if class.Spec.NotebookCulling.Cutoff <= 0 {
 			continue
 		}
 
-		// Check if this course manages the namespace
-		if !slices.Contains(course.Status.Namespaces, namespace) {
+		// Check if this class manages the namespace
+		if !slices.Contains(class.Status.Namespaces, namespace) {
 			continue
 		}
 
 		// Get users from the students group
-		users, err := r.getGroupUsers(ctx, course.Spec.StudentsGroup)
+		users, err := r.getGroupUsers(ctx, class.Spec.StudentsGroup)
 		if err != nil {
-			log.Error(err, "Failed to get group users", "course", course.Name, "group", course.Spec.StudentsGroup)
+			log.Error(err, "Failed to get group users", "class", class.Name, "group", class.Spec.StudentsGroup)
 			continue
 		}
 
-		log.Info("Loaded group for course", "course", course.Name, "group", course.Spec.StudentsGroup,
-			"users", len(users), "cutoff", course.Spec.NotebookCulling.Cutoff)
+		log.Info("Loaded group for class", "class", class.Name, "group", class.Spec.StudentsGroup,
+			"users", len(users), "cutoff", class.Spec.NotebookCulling.Cutoff)
 
-		// Add users to map, taking max cutoff if user is in multiple courses
+		// Add users to map, taking max cutoff if user is in multiple classes
 		for _, username := range users {
 			username = strings.TrimSpace(username)
 			if username == "" {
@@ -124,23 +124,23 @@ func (r *CourseReconciler) buildUserCutoffMap(ctx context.Context, namespace str
 
 			existing, exists := userMap[username]
 			if exists {
-				// User is in multiple courses, use the higher (more lenient) cutoff
-				if course.Spec.NotebookCulling.Cutoff > existing.Cutoff {
-					log.Info("User in multiple courses, using more lenient cutoff",
+				// User is in multiple classes, use the higher (more lenient) cutoff
+				if class.Spec.NotebookCulling.Cutoff > existing.Cutoff {
+					log.Info("User in multiple classes, using more lenient cutoff",
 						"user", username,
-						"previousCourse", existing.ClassName,
+						"previousClass", existing.ClassName,
 						"previousCutoff", existing.Cutoff,
-						"newCourse", course.Name,
-						"newCutoff", course.Spec.NotebookCulling.Cutoff)
+						"newClass", class.Name,
+						"newCutoff", class.Spec.NotebookCulling.Cutoff)
 					userMap[username] = UserCutoffInfo{
-						ClassName: course.Name,
-						Cutoff:    course.Spec.NotebookCulling.Cutoff,
+						ClassName: class.Name,
+						Cutoff:    class.Spec.NotebookCulling.Cutoff,
 					}
 				}
 			} else {
 				userMap[username] = UserCutoffInfo{
-					ClassName: course.Name,
-					Cutoff:    course.Spec.NotebookCulling.Cutoff,
+					ClassName: class.Name,
+					Cutoff:    class.Spec.NotebookCulling.Cutoff,
 				}
 			}
 		}
@@ -151,7 +151,7 @@ func (r *CourseReconciler) buildUserCutoffMap(ctx context.Context, namespace str
 }
 
 // deleteNotebookAndPVC deletes a notebook and its associated PVC
-func (r *CourseReconciler) deleteNotebookAndPVC(ctx context.Context, notebookName, namespace string) error {
+func (r *ClassCullerReconciler) deleteNotebookAndPVC(ctx context.Context, notebookName, namespace string) error {
 	log := log.FromContext(ctx)
 
 	notebook := &unstructured.Unstructured{}
@@ -193,18 +193,18 @@ func (r *CourseReconciler) deleteNotebookAndPVC(ctx context.Context, notebookNam
 	return nil
 }
 
-// cullNotebooksMultiNamespace handles notebook culling for multi-namespace courses
+// cullNotebooksMultiNamespace handles notebook culling for multi-namespace classes
 // It lists all notebooks across all namespaces and filters by namespace prefix
-func (r *CourseReconciler) cullNotebooksMultiNamespace(ctx context.Context, course *nercv1alpha1.Course, now time.Time) error {
+func (r *ClassCullerReconciler) cullNotebooksMultiNamespace(ctx context.Context, class *nercv1alpha1.Class, now time.Time) error {
 	log := log.FromContext(ctx)
 
-	prefix := strings.TrimSpace(course.Spec.Deployment.StudentNamespacePrefix)
+	prefix := strings.TrimSpace(class.Spec.Deployment.StudentNamespacePrefix)
 	if prefix == "" {
-		log.V(1).Info("No namespace prefix configured for multi-namespace course", "course", course.Name)
+		log.V(1).Info("No namespace prefix configured for multi-namespace class", "class", class.Name)
 		return nil
 	}
 
-	cutoff := course.Spec.NotebookCulling.Cutoff
+	cutoff := class.Spec.NotebookCulling.Cutoff
 
 	// List all notebooks across all namespaces
 	notebookList := &unstructured.UnstructuredList{}
@@ -218,10 +218,10 @@ func (r *CourseReconciler) cullNotebooksMultiNamespace(ctx context.Context, cour
 		return fmt.Errorf("failed to list notebooks across all namespaces: %w", err)
 	}
 
-	// Get users from the students group for this course
-	users, err := r.getGroupUsers(ctx, course.Spec.StudentsGroup)
+	// Get users from the students group for this class
+	users, err := r.getGroupUsers(ctx, class.Spec.StudentsGroup)
 	if err != nil {
-		log.Error(err, "Failed to get group users", "course", course.Name, "group", course.Spec.StudentsGroup)
+		log.Error(err, "Failed to get group users", "class", class.Name, "group", class.Spec.StudentsGroup)
 		users = []string{} // Continue without user validation
 	}
 
@@ -234,7 +234,7 @@ func (r *CourseReconciler) cullNotebooksMultiNamespace(ctx context.Context, cour
 		}
 	}
 
-	log.Info("Processing multi-namespace course", "course", course.Name, "prefix", prefix,
+	log.Info("Processing multi-namespace class", "class", class.Name, "prefix", prefix,
 		"cutoff", cutoff, "authorizedUsers", len(userSet))
 
 	matched := 0
@@ -264,13 +264,13 @@ func (r *CourseReconciler) cullNotebooksMultiNamespace(ctx context.Context, cour
 			continue
 		}
 
-		// Check if user is in the course group
+		// Check if user is in the class group
 		if !userSet[username] {
 			// User not in group - delete notebook and PVC
-			log.Info("Deleting notebook for user not in course group",
+			log.Info("Deleting notebook for user not in class group",
 				"notebook", notebookName,
 				"namespace", namespace,
-				"course", course.Name,
+				"class", class.Name,
 				"user", username)
 
 			if err := r.deleteNotebookAndPVC(ctx, notebookName, namespace); err != nil {
@@ -279,7 +279,7 @@ func (r *CourseReconciler) cullNotebooksMultiNamespace(ctx context.Context, cour
 			continue
 		}
 
-		// User is in the course group - check cutoff
+		// User is in the class group - check cutoff
 		cutoffDuration := time.Duration(cutoff) * time.Second
 		creationTime := notebook.GetCreationTimestamp().Time
 		ageSeconds := now.Sub(creationTime).Seconds()
@@ -290,7 +290,7 @@ func (r *CourseReconciler) cullNotebooksMultiNamespace(ctx context.Context, cour
 			log.Info("Stopping notebook that exceeded cutoff time",
 				"notebook", notebookName,
 				"namespace", namespace,
-				"course", course.Name,
+				"class", class.Name,
 				"user", username,
 				"age", fmt.Sprintf("%.0fs", ageSeconds),
 				"cutoff", fmt.Sprintf("%.0fs", cutoffSeconds))
@@ -319,42 +319,42 @@ func (r *CourseReconciler) cullNotebooksMultiNamespace(ctx context.Context, cour
 		}
 	}
 
-	log.Info("Matched notebooks in multi-namespace course", "course", course.Name, "matched", matched)
+	log.Info("Matched notebooks in multi-namespace class", "class", class.Name, "matched", matched)
 	return nil
 }
 
-func (r *CourseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *ClassCullerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	var course nercv1alpha1.Course
-	if err := r.Get(ctx, req.NamespacedName, &course); err != nil {
+	var class nercv1alpha1.Class
+	if err := r.Get(ctx, req.NamespacedName, &class); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	// Skip if notebook culling is not enabled
-	if !course.Spec.NotebookCulling.Enabled {
-		log.V(1).Info("Notebook culling not enabled for course", "course", course.Name)
+	if !class.Spec.NotebookCulling.Enabled {
+		log.V(1).Info("Notebook culling not enabled for class", "class", class.Name)
 		return ctrl.Result{}, nil
 	}
 
-	if course.Spec.NotebookCulling.Cutoff <= 0 {
-		log.V(1).Info("Invalid cutoff time for course", "course", course.Name)
+	if class.Spec.NotebookCulling.Cutoff <= 0 {
+		log.V(1).Info("Invalid cutoff time for class", "class", class.Name)
 		return ctrl.Result{}, nil
 	}
 
 	now := time.Now()
 
-	// Handle multi-namespace courses differently
-	if course.Spec.Deployment.MultiNamespace {
-		if err := r.cullNotebooksMultiNamespace(ctx, &course, now); err != nil {
-			log.Error(err, "Failed to cull notebooks in multi-namespace course", "course", course.Name)
+	// Handle multi-namespace classes differently
+	if class.Spec.Deployment.MultiNamespace {
+		if err := r.cullNotebooksMultiNamespace(ctx, &class, now); err != nil {
+			log.Error(err, "Failed to cull notebooks in multi-namespace class", "class", class.Name)
 			return ctrl.Result{RequeueAfter: time.Minute * 5}, err
 		}
 	} else {
 		// Single namespace mode - process specific namespaces from status
-		namespaces := course.Status.Namespaces
+		namespaces := class.Status.Namespaces
 		if len(namespaces) == 0 {
-			log.V(1).Info("No namespaces found for course", "course", course.Name)
+			log.V(1).Info("No namespaces found for class", "class", class.Name)
 			return ctrl.Result{}, nil
 		}
 
@@ -371,10 +371,10 @@ func (r *CourseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 }
 
-func (r *CourseReconciler) cullNotebooksInNamespace(ctx context.Context, namespace string, now time.Time) error {
+func (r *ClassCullerReconciler) cullNotebooksInNamespace(ctx context.Context, namespace string, now time.Time) error {
 	log := log.FromContext(ctx)
 
-	// Build user-to-cutoff map for all courses in this namespace
+	// Build user-to-cutoff map for all classes in this namespace
 	userMap, err := r.buildUserCutoffMap(ctx, namespace)
 	if err != nil {
 		return fmt.Errorf("failed to build user cutoff map: %w", err)
@@ -409,11 +409,11 @@ func (r *CourseReconciler) cullNotebooksInNamespace(ctx context.Context, namespa
 			continue
 		}
 
-		// Check if user is in any course group
+		// Check if user is in any class group
 		userInfo, userExists := userMap[username]
 		if !userExists {
 			// User not in any group - delete notebook and PVC
-			log.Info("Deleting notebook for user not in any course group",
+			log.Info("Deleting notebook for user not in any class group",
 				"notebook", notebookName,
 				"namespace", namespace,
 				"user", username)
@@ -424,7 +424,7 @@ func (r *CourseReconciler) cullNotebooksInNamespace(ctx context.Context, namespa
 			continue
 		}
 
-		// User is in a course group - use their specific cutoff
+		// User is in a class group - use their specific cutoff
 		userCutoffDuration := time.Duration(userInfo.Cutoff) * time.Second
 		creationTime := notebook.GetCreationTimestamp().Time
 		ageSeconds := now.Sub(creationTime).Seconds()
@@ -436,7 +436,7 @@ func (r *CourseReconciler) cullNotebooksInNamespace(ctx context.Context, namespa
 				"notebook", notebookName,
 				"namespace", namespace,
 				"user", username,
-				"course", userInfo.ClassName,
+				"class", userInfo.ClassName,
 				"age", fmt.Sprintf("%.0fs", ageSeconds),
 				"cutoff", fmt.Sprintf("%.0fs", cutoffSeconds))
 
@@ -467,9 +467,9 @@ func (r *CourseReconciler) cullNotebooksInNamespace(ctx context.Context, namespa
 	return nil
 }
 
-func (r *CourseReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *ClassCullerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&nercv1alpha1.Course{}).
+		For(&nercv1alpha1.Class{}).
 		Named("culler-controller").
 		Complete(r)
 }

@@ -1,12 +1,12 @@
 apiVersion: nerc.mghpcc.org/v1alpha1
-kind: Course
+kind: Class
 metadata:
-  name: multi-test-course
+  name: multi-test-class
   namespace: default
 spec:
-  courseCode: "CS202"
+  classCode: "CS202"
   semester: "Spring2026"
-  displayName: "Multi-Namespace Test Course"
+  displayName: "Multi-Namespace Test Class"
   professors:
     - "professor@university.edu"
 

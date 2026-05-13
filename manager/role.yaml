@@ -6,7 +6,7 @@ rules:
 - apiGroups:
   - nerc.mghpcc.org
   resources:
-  - courses
+  - classes
   verbs:
   - create
   - delete
@@ -18,7 +18,7 @@ rules:
 - apiGroups:
   - nerc.mghpcc.org
   resources:
-  - courses/status
+  - classes/status
   verbs:
   - get
   - patch
@@ -26,7 +26,7 @@ rules:
 - apiGroups:
   - nerc.mghpcc.org
   resources:
-  - courses/finalizers
+  - classes/finalizers
   verbs:
   - update
 - apiGroups:

@@ -1,12 +1,12 @@
 apiVersion: nerc.mghpcc.org/v1alpha1
-kind: Course
+kind: Class
 metadata:
-  name: test-course
+  name: test-class
   namespace: default
 spec:
-  courseCode: "test101"
+  classCode: "test101"
   semester: "Spring2026"
-  displayName: "Test Course for Single Namespace"
+  displayName: "Test Class for Single Namespace"
   professors:
     - "professor@university.edu"
 

@@ -49,11 +49,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controllers.CourseReconciler{
+	if err = (&controllers.ClassCullerReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Course")
+		setupLog.Error(err, "unable to create controller", "controller", "ClassCuller")
 		os.Exit(1)
 	}
 

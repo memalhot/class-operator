@@ -26,89 +26,89 @@ type ClassReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=nerc.mghpcc.org,resources=courses,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=nerc.mghpcc.org,resources=courses/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=nerc.mghpcc.org,resources=courses/finalizers,verbs=update
+// +kubebuilder:rbac:groups=nerc.mghpcc.org,resources=classes,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=nerc.mghpcc.org,resources=classes/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=nerc.mghpcc.org,resources=classes/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=user.openshift.io,resources=groups,verbs=get;list;watch
 
-const courseFinalizer = "nerc.mghpcc.org/course-finalizer"
+const classFinalizer = "nerc.mghpcc.org/class-finalizer"
 
 func (r *ClassReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	var course nercv1alpha1.Course
-	if err := r.Get(ctx, req.NamespacedName, &course); err != nil {
+	var class nercv1alpha1.Class
+	if err := r.Get(ctx, req.NamespacedName, &class); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	// Handle deletion
-	if !course.ObjectMeta.DeletionTimestamp.IsZero() {
-		if slices.Contains(course.ObjectMeta.Finalizers, courseFinalizer) {
-			// Course is being deleted, clean up namespaces
-			if err := r.deleteNamespaces(ctx, &course); err != nil {
-				log.Error(err, "Failed to delete namespaces", "course", course.Name)
+	if !class.ObjectMeta.DeletionTimestamp.IsZero() {
+		if slices.Contains(class.ObjectMeta.Finalizers, classFinalizer) {
+			// Class is being deleted, clean up namespaces
+			if err := r.deleteNamespaces(ctx, &class); err != nil {
+				log.Error(err, "Failed to delete namespaces", "class", class.Name)
 				return ctrl.Result{}, err
 			}
 
 			// Remove finalizer
-			course.ObjectMeta.Finalizers = removeString(course.ObjectMeta.Finalizers, courseFinalizer)
-			if err := r.Update(ctx, &course); err != nil {
-				log.Error(err, "Failed to remove finalizer", "course", course.Name)
+			class.ObjectMeta.Finalizers = removeString(class.ObjectMeta.Finalizers, classFinalizer)
+			if err := r.Update(ctx, &class); err != nil {
+				log.Error(err, "Failed to remove finalizer", "class", class.Name)
 				return ctrl.Result{}, err
 			}
-			log.Info("Successfully cleaned up course namespaces", "course", course.Name)
+			log.Info("Successfully cleaned up class namespaces", "class", class.Name)
 		}
 		return ctrl.Result{}, nil
 	}
 
 	// Add finalizer if not present
-	if !slices.Contains(course.ObjectMeta.Finalizers, courseFinalizer) {
-		course.ObjectMeta.Finalizers = append(course.ObjectMeta.Finalizers, courseFinalizer)
-		if err := r.Update(ctx, &course); err != nil {
-			log.Error(err, "Failed to add finalizer", "course", course.Name)
+	if !slices.Contains(class.ObjectMeta.Finalizers, classFinalizer) {
+		class.ObjectMeta.Finalizers = append(class.ObjectMeta.Finalizers, classFinalizer)
+		if err := r.Update(ctx, &class); err != nil {
+			log.Error(err, "Failed to add finalizer", "class", class.Name)
 			return ctrl.Result{}, err
 		}
-		log.Info("Added finalizer to course", "course", course.Name)
+		log.Info("Added finalizer to class", "class", class.Name)
 	}
 
 	var createdNamespaces []string
 
-	if course.Spec.Deployment.MultiNamespace {
+	if class.Spec.Deployment.MultiNamespace {
 		// Multi-namespace mode: create namespace per user
-		log.Info("Processing multi-namespace course", "course", course.Name)
-		namespaces, err := r.createMultiNamespaces(ctx, &course)
+		log.Info("Processing multi-namespace class", "class", class.Name)
+		namespaces, err := r.createMultiNamespaces(ctx, &class)
 		if err != nil {
-			log.Error(err, "Failed to create multi-namespaces", "course", course.Name)
+			log.Error(err, "Failed to create multi-namespaces", "class", class.Name)
 			return ctrl.Result{}, err
 		}
 		createdNamespaces = namespaces
 	} else {
 		// Single-namespace mode: create one namespace
-		namespaceName := generateNamespaceName(course.Spec.CourseCode, course.Spec.Semester)
-		log.Info("Processing single-namespace course", "course", course.Name, "namespace", namespaceName)
+		namespaceName := generateNamespaceName(class.Spec.ClassCode, class.Spec.Semester)
+		log.Info("Processing single-namespace class", "class", class.Name, "namespace", namespaceName)
 
-		if err := r.ensureNamespace(ctx, &course, namespaceName); err != nil {
+		if err := r.ensureNamespace(ctx, &class, namespaceName); err != nil {
 			return ctrl.Result{}, err
 		}
 		createdNamespaces = []string{namespaceName}
 	}
 
 	// Update status with all created namespaces
-	if !slices.Equal(course.Status.Namespaces, createdNamespaces) {
-		course.Status.Namespaces = createdNamespaces
-		if err := r.Status().Update(ctx, &course); err != nil {
-			log.Error(err, "Failed to update course status", "course", course.Name)
+	if !slices.Equal(class.Status.Namespaces, createdNamespaces) {
+		class.Status.Namespaces = createdNamespaces
+		if err := r.Status().Update(ctx, &class); err != nil {
+			log.Error(err, "Failed to update class status", "class", class.Name)
 			return ctrl.Result{}, err
 		}
-		log.Info("Updated course status with namespaces", "course", course.Name, "count", len(createdNamespaces))
+		log.Info("Updated class status with namespaces", "class", class.Name, "count", len(createdNamespaces))
 	}
 
 	return ctrl.Result{}, nil
 }
 
 // ensureNamespace creates a namespace if it doesn't exist
-func (r *ClassReconciler) ensureNamespace(ctx context.Context, course *nercv1alpha1.Course, namespaceName string) error {
+func (r *ClassReconciler) ensureNamespace(ctx context.Context, class *nercv1alpha1.Class, namespaceName string) error {
 	log := log.FromContext(ctx)
 
 	namespace := &corev1.Namespace{}
@@ -116,15 +116,15 @@ func (r *ClassReconciler) ensureNamespace(ctx context.Context, course *nercv1alp
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Create the namespace
-			log.Info("Creating namespace for course", "course", course.Name, "namespace", namespaceName)
+			log.Info("Creating namespace for class", "class", class.Name, "namespace", namespaceName)
 
 			namespace = &corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: namespaceName,
 					Labels: map[string]string{
-						"nerc.mghpcc.org/course":      course.Name,
-						"nerc.mghpcc.org/course-code": course.Spec.CourseCode,
-						"nerc.mghpcc.org/semester":    course.Spec.Semester,
+						"nerc.mghpcc.org/class":      class.Name,
+						"nerc.mghpcc.org/class-code": class.Spec.ClassCode,
+						"nerc.mghpcc.org/semester":   class.Spec.Semester,
 					},
 				},
 			}
@@ -147,28 +147,28 @@ func (r *ClassReconciler) ensureNamespace(ctx context.Context, course *nercv1alp
 }
 
 // createMultiNamespaces creates a namespace for each user in the students group
-func (r *ClassReconciler) createMultiNamespaces(ctx context.Context, course *nercv1alpha1.Course) ([]string, error) {
+func (r *ClassReconciler) createMultiNamespaces(ctx context.Context, class *nercv1alpha1.Class) ([]string, error) {
 	log := log.FromContext(ctx)
 
 	// Get users from the students group
-	users, err := r.getGroupUsers(ctx, course.Spec.StudentsGroup)
+	users, err := r.getGroupUsers(ctx, class.Spec.StudentsGroup)
 	if err != nil {
-		log.Error(err, "Failed to get group users", "course", course.Name, "group", course.Spec.StudentsGroup)
+		log.Error(err, "Failed to get group users", "class", class.Name, "group", class.Spec.StudentsGroup)
 		return nil, err
 	}
 
 	if len(users) == 0 {
-		log.Info("No users found in group", "course", course.Name, "group", course.Spec.StudentsGroup)
+		log.Info("No users found in group", "class", class.Name, "group", class.Spec.StudentsGroup)
 		return []string{}, nil
 	}
 
-	log.Info("Creating namespaces for users", "course", course.Name, "userCount", len(users))
+	log.Info("Creating namespaces for users", "class", class.Name, "userCount", len(users))
 
 	var createdNamespaces []string
-	template := course.Spec.Deployment.NamespaceTemplate
+	template := class.Spec.Deployment.NamespaceTemplate
 	if template == "" {
 		// Default template if not specified
-		template = fmt.Sprintf("%s-{{.Username}}", course.Spec.CourseCode)
+		template = fmt.Sprintf("%s-{{.Username}}", class.Spec.ClassCode)
 	}
 
 	for _, username := range users {
@@ -181,12 +181,12 @@ func (r *ClassReconciler) createMultiNamespaces(ctx context.Context, course *ner
 		namespaceName := applyNamespaceTemplate(template, username)
 
 		// Add hash suffix for uniqueness (in case of duplicate usernames)
-		hash := generateUserHash(course.Name, username)
+		hash := generateUserHash(class.Name, username)
 		namespaceName = fmt.Sprintf("%s-%s", namespaceName, hash)
 		namespaceName = normalizeNamespaceName(namespaceName)
 
 		// Create namespace for this user
-		if err := r.ensureNamespace(ctx, course, namespaceName); err != nil {
+		if err := r.ensureNamespace(ctx, class, namespaceName); err != nil {
 			log.Error(err, "Failed to create namespace for user", "user", username, "namespace", namespaceName)
 			continue
 		}
@@ -194,7 +194,7 @@ func (r *ClassReconciler) createMultiNamespaces(ctx context.Context, course *ner
 		createdNamespaces = append(createdNamespaces, namespaceName)
 	}
 
-	log.Info("Completed namespace creation", "course", course.Name, "created", len(createdNamespaces))
+	log.Info("Completed namespace creation", "class", class.Name, "created", len(createdNamespaces))
 	return createdNamespaces, nil
 }
 
@@ -223,28 +223,28 @@ func applyNamespaceTemplate(template, username string) string {
 	return strings.ReplaceAll(template, "{{.Username}}", username)
 }
 
-// generateUserHash creates a deterministic short hash from course name and username
+// generateUserHash creates a deterministic short hash from class name and username
 // This ensures uniqueness even if multiple students have the same username
-func generateUserHash(courseName, username string) string {
-	// Combine course name and username to ensure uniqueness per course
-	data := fmt.Sprintf("%s:%s", courseName, username)
+func generateUserHash(className, username string) string {
+	// Combine class name and username to ensure uniqueness per class
+	data := fmt.Sprintf("%s:%s", className, username)
 	hash := sha256.Sum256([]byte(data))
 	// Return first 6 characters of hex hash (sufficient for uniqueness in classroom settings)
 	return hex.EncodeToString(hash[:])[:6]
 }
 
-// deleteNamespaces deletes all namespaces associated with a course
-func (r *ClassReconciler) deleteNamespaces(ctx context.Context, course *nercv1alpha1.Course) error {
+// deleteNamespaces deletes all namespaces associated with a class
+func (r *ClassReconciler) deleteNamespaces(ctx context.Context, class *nercv1alpha1.Class) error {
 	log := log.FromContext(ctx)
 
-	if len(course.Status.Namespaces) == 0 {
-		log.Info("No namespaces to delete", "course", course.Name)
+	if len(class.Status.Namespaces) == 0 {
+		log.Info("No namespaces to delete", "class", class.Name)
 		return nil
 	}
 
-	log.Info("Deleting namespaces for course", "course", course.Name, "count", len(course.Status.Namespaces))
+	log.Info("Deleting namespaces for class", "class", class.Name, "count", len(class.Status.Namespaces))
 
-	for _, namespaceName := range course.Status.Namespaces {
+	for _, namespaceName := range class.Status.Namespaces {
 		namespace := &corev1.Namespace{}
 		namespace.Name = namespaceName
 
@@ -273,9 +273,9 @@ func removeString(slice []string, s string) []string {
 	return result
 }
 
-// generateNamespaceName creates a valid namespace name from course code and semester
-func generateNamespaceName(courseCode, semester string) string {
-	name := fmt.Sprintf("%s-%s", courseCode, semester)
+// generateNamespaceName creates a valid namespace name from class code and semester
+func generateNamespaceName(classCode, semester string) string {
+	name := fmt.Sprintf("%s-%s", classCode, semester)
 	return normalizeNamespaceName(name)
 }
 
@@ -301,7 +301,7 @@ func normalizeNamespaceName(name string) string {
 
 func (r *ClassReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&nercv1alpha1.Course{}).
+		For(&nercv1alpha1.Class{}).
 		Named("class-controller").
 		Complete(r)
 }

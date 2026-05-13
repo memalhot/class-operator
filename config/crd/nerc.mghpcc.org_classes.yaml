@@ -4,16 +4,16 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.1
-  name: courses.nerc.mghpcc.org
+  name: classes.nerc.mghpcc.org
 spec:
   group: nerc.mghpcc.org
   names:
-    kind: Course
-    listKind: CourseList
-    plural: courses
+    kind: Class
+    listKind: ClassList
+    plural: classes
     shortNames:
-    - course
-    singular: course
+    - class
+    singular: class
   scope: Namespaced
   versions:
   - name: v1alpha1
@@ -43,9 +43,9 @@ spec:
                 items:
                   type: string
                 type: array
-              coldFrontProject:
+              classCode:
                 type: string
-              courseCode:
+              coldFrontProject:
                 type: string
               deployment:
                 properties:
@@ -119,7 +119,7 @@ spec:
                   type: string
                 type: array
             required:
-            - courseCode
+            - classCode
             - deployment
             - professors
             - semester

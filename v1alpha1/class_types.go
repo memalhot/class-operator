@@ -37,8 +37,8 @@ type NotebookCullingSpec struct {
 	Cutoff  int  `json:"cutoff,omitempty"` // Idle timeout in seconds before culling
 }
 
-type CourseSpec struct {
-	CourseCode         string              `json:"courseCode"`
+type ClassSpec struct {
+	ClassCode          string              `json:"classCode"`
 	Semester           string              `json:"semester"`
 	DisplayName        string              `json:"displayName,omitempty"`
 	Professors         []string            `json:"professors"`
@@ -54,7 +54,7 @@ type CourseSpec struct {
 	NotebookCulling    NotebookCullingSpec `json:"notebookCulling,omitempty"`
 }
 
-type CourseStatus struct {
+type ClassStatus struct {
 	Phase              string             `json:"phase,omitempty"`
 	ObservedGeneration int64              `json:"observedGeneration,omitempty"`
 	Namespaces         []string           `json:"namespaces,omitempty"`
@@ -63,18 +63,18 @@ type CourseStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,shortName=course
-type Course struct {
+// +kubebuilder:resource:scope=Namespaced,shortName=class
+type Class struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   CourseSpec   `json:"spec,omitempty"`
-	Status CourseStatus `json:"status,omitempty"`
+	Spec   ClassSpec   `json:"spec,omitempty"`
+	Status ClassStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
-type CourseList struct {
+type ClassList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Course `json:"items"`
+	Items           []Class `json:"items"`
 }

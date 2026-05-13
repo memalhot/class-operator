@@ -14,5 +14,5 @@ var (
 )
 
 func init() {
-	SchemeBuilder.Register(&Course{}, &CourseList{})
+	SchemeBuilder.Register(&Class{}, &ClassList{})
 }
