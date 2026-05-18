@@ -54,7 +54,9 @@ func (r *ClassReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			}
 
 			// Remove finalizer
-			class.ObjectMeta.Finalizers = removeString(class.ObjectMeta.Finalizers, classFinalizer)
+			class.ObjectMeta.Finalizers = slices.DeleteFunc(class.ObjectMeta.Finalizers, func(s string) bool {
+				return s == classFinalizer
+			})
 			if err := r.Update(ctx, &class); err != nil {
 				log.Error(err, "Failed to remove finalizer", "class", class.Name)
 				return ctrl.Result{}, err
@@ -179,10 +181,10 @@ func (r *ClassReconciler) createMultiNamespaces(ctx context.Context, class *nerc
 			continue
 		}
 
-		// Apply template to generate namespace name
-		namespaceName := applyNamespaceTemplate(template, username)
+		// Generate namespace name from template
+		namespaceName := strings.ReplaceAll(template, "{{.Username}}", username)
 
-		// Add hash suffix for uniqueness (in case of duplicate usernames)
+		// Add hash suffix for uniqueness
 		hash := generateUserHash(class.Name, username)
 		namespaceName = fmt.Sprintf("%s-%s", namespaceName, hash)
 		namespaceName = normalizeNamespaceName(namespaceName)
@@ -220,11 +222,6 @@ func (r *ClassReconciler) getGroupUsers(ctx context.Context, groupName string) (
 	return group.Users, nil
 }
 
-// applyNamespaceTemplate replaces {{.Username}} with the actual username
-func applyNamespaceTemplate(template, username string) string {
-	return strings.ReplaceAll(template, "{{.Username}}", username)
-}
-
 // generateUserHash creates a deterministic short hash from class name and username
 // This ensures uniqueness even if multiple students have the same username
 func generateUserHash(className, username string) string {
@@ -247,8 +244,11 @@ func (r *ClassReconciler) deleteNamespaces(ctx context.Context, class *nercv1alp
 	log.Info("Deleting namespaces for class", "class", class.Name, "count", len(class.Status.Namespaces))
 
 	for _, namespaceName := range class.Status.Namespaces {
-		namespace := &corev1.Namespace{}
-		namespace.Name = namespaceName
+		namespace := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: namespaceName,
+			},
+		}
 
 		if err := r.Delete(ctx, namespace); err != nil {
 			if errors.IsNotFound(err) {
@@ -262,17 +262,6 @@ func (r *ClassReconciler) deleteNamespaces(ctx context.Context, class *nercv1alp
 	}
 
 	return nil
-}
-
-// removeString removes a string from a slice
-func removeString(slice []string, s string) []string {
-	result := []string{}
-	for _, item := range slice {
-		if item != s {
-			result = append(result, item)
-		}
-	}
-	return result
 }
 
 // generateNamespaceName creates a valid namespace name from class code and semester
