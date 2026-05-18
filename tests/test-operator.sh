@@ -213,9 +213,8 @@ else
     exit 1
 fi
 
-# Trigger reconciliation by annotating the class
-echo "Triggering reconciliation..."
-kubectl annotate class multi-test-class reconcile-trigger=$(date +%s) --overwrite
+# Reconciliation should happen automatically via group watch
+echo "Waiting for automatic reconciliation (group watch)..."
 sleep 5
 
 # Wait for operator to reconcile (may take a moment)
