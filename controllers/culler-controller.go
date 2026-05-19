@@ -42,7 +42,7 @@ type UserCutoffInfo struct {
 
 // getGroupUsers retrieves users from an OpenShift group
 func (r *ClassCullerReconciler) getGroupUsers(ctx context.Context, groupName string) ([]string, error) {
-	log := log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
 	if groupName == "" {
 		return []string{}, nil
@@ -54,7 +54,7 @@ func (r *ClassCullerReconciler) getGroupUsers(ctx context.Context, groupName str
 	}
 
 	if len(group.Users) == 0 {
-		log.V(1).Info("Group is empty, this could lead to notebooks being deleted", "group", groupName)
+		logger.V(1).Info("Group is empty, this could lead to notebooks being deleted", "group", groupName)
 	}
 
 	return group.Users, nil
@@ -79,8 +79,10 @@ func getNotebookUsername(notebook *unstructured.Unstructured) string {
 
 // buildUserCutoffMap creates a map of username -> cutoff info from all classes in a namespace
 // If a user is in multiple classes, the higher (more lenient) cutoff wins
-func (r *ClassCullerReconciler) buildUserCutoffMap(ctx context.Context, namespace string) (map[string]UserCutoffInfo, error) {
-	log := log.FromContext(ctx)
+func (r *ClassCullerReconciler) buildUserCutoffMap(
+	ctx context.Context, namespace string,
+) (map[string]UserCutoffInfo, error) {
+	logger := log.FromContext(ctx)
 
 	// List all classes
 	classList := &nercv1alpha1.ClassList{}
@@ -110,11 +112,11 @@ func (r *ClassCullerReconciler) buildUserCutoffMap(ctx context.Context, namespac
 		// Get users from the students group
 		users, err := r.getGroupUsers(ctx, class.Spec.StudentsGroup)
 		if err != nil {
-			log.Error(err, "Failed to get group users", "class", class.Name, "group", class.Spec.StudentsGroup)
+			logger.Error(err, "Failed to get group users", "class", class.Name, "group", class.Spec.StudentsGroup)
 			continue
 		}
 
-		log.Info("Loaded group for class", "class", class.Name, "group", class.Spec.StudentsGroup,
+		logger.Info("Loaded group for class", "class", class.Name, "group", class.Spec.StudentsGroup,
 			"users", len(users), "cutoff", class.Spec.NotebookCulling.Cutoff)
 
 		// Add users to map, taking max cutoff if user is in multiple classes
@@ -128,7 +130,7 @@ func (r *ClassCullerReconciler) buildUserCutoffMap(ctx context.Context, namespac
 			if exists {
 				// User is in multiple classes, use the higher (more lenient) cutoff
 				if class.Spec.NotebookCulling.Cutoff > existing.Cutoff {
-					log.Info("User in multiple classes, using more lenient cutoff",
+					logger.Info("User in multiple classes, using more lenient cutoff",
 						"user", username,
 						"previousClass", existing.ClassName,
 						"previousCutoff", existing.Cutoff,
@@ -148,13 +150,13 @@ func (r *ClassCullerReconciler) buildUserCutoffMap(ctx context.Context, namespac
 		}
 	}
 
-	log.Info("Built user cutoff map", "namespace", namespace, "totalUsers", len(userMap))
+	logger.Info("Built user cutoff map", "namespace", namespace, "totalUsers", len(userMap))
 	return userMap, nil
 }
 
 // deleteNotebookAndPVC deletes a notebook and its associated PVC
 func (r *ClassCullerReconciler) deleteNotebookAndPVC(ctx context.Context, notebookName, namespace string) error {
-	log := log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
 	notebook := &unstructured.Unstructured{}
 	notebook.SetGroupVersionKind(schema.GroupVersionKind{
@@ -170,7 +172,7 @@ func (r *ClassCullerReconciler) deleteNotebookAndPVC(ctx context.Context, notebo
 		return fmt.Errorf("failed to delete notebook %s: %w", notebookName, err)
 	}
 
-	log.Info("Deleted notebook", "notebook", notebookName, "namespace", namespace)
+	logger.Info("Deleted notebook", "notebook", notebookName, "namespace", namespace)
 
 	// Calculate PVC name (based on JupyterHub naming convention)
 	pvcName := fmt.Sprintf("jupyterhub-nb-%s-pvc", strings.TrimPrefix(notebookName, "jupyter-nb-"))
@@ -187,9 +189,9 @@ func (r *ClassCullerReconciler) deleteNotebookAndPVC(ctx context.Context, notebo
 
 	if err := r.Delete(ctx, pvc); err != nil {
 		// Log error but don't fail if PVC doesn't exist
-		log.V(1).Info("Could not delete PVC (may not exist)", "pvc", pvcName, "namespace", namespace, "error", err)
+		logger.V(1).Info("Could not delete PVC (may not exist)", "pvc", pvcName, "namespace", namespace, "error", err)
 	} else {
-		log.Info("Deleted PVC", "pvc", pvcName, "namespace", namespace)
+		logger.Info("Deleted PVC", "pvc", pvcName, "namespace", namespace)
 	}
 
 	return nil
@@ -197,12 +199,14 @@ func (r *ClassCullerReconciler) deleteNotebookAndPVC(ctx context.Context, notebo
 
 // cullNotebooksMultiNamespace handles notebook culling for multi-namespace classes
 // It lists all notebooks across all namespaces and filters by namespace prefix
-func (r *ClassCullerReconciler) cullNotebooksMultiNamespace(ctx context.Context, class *nercv1alpha1.Class, now time.Time) error {
-	log := log.FromContext(ctx)
+func (r *ClassCullerReconciler) cullNotebooksMultiNamespace(
+	ctx context.Context, class *nercv1alpha1.Class, now time.Time,
+) error {
+	logger := log.FromContext(ctx)
 
 	prefix := strings.TrimSpace(class.Spec.Deployment.StudentNamespacePrefix)
 	if prefix == "" {
-		log.V(1).Info("No namespace prefix configured for multi-namespace class", "class", class.Name)
+		logger.V(1).Info("No namespace prefix configured for multi-namespace class", "class", class.Name)
 		return nil
 	}
 
@@ -223,7 +227,7 @@ func (r *ClassCullerReconciler) cullNotebooksMultiNamespace(ctx context.Context,
 	// Get users from the students group for this class
 	users, err := r.getGroupUsers(ctx, class.Spec.StudentsGroup)
 	if err != nil {
-		log.Error(err, "Failed to get group users", "class", class.Name, "group", class.Spec.StudentsGroup)
+		logger.Error(err, "Failed to get group users", "class", class.Name, "group", class.Spec.StudentsGroup)
 		users = []string{} // Continue without user validation
 	}
 
@@ -236,7 +240,7 @@ func (r *ClassCullerReconciler) cullNotebooksMultiNamespace(ctx context.Context,
 		}
 	}
 
-	log.Info("Processing multi-namespace class", "class", class.Name, "prefix", prefix,
+	logger.Info("Processing multi-namespace class", "class", class.Name, "prefix", prefix,
 		"cutoff", cutoff, "authorizedUsers", len(userSet))
 
 	matched := 0
@@ -262,21 +266,21 @@ func (r *ClassCullerReconciler) cullNotebooksMultiNamespace(ctx context.Context,
 		// Get username from notebook annotations
 		username := getNotebookUsername(&notebook)
 		if username == "" {
-			log.V(1).Info("Notebook missing username annotation, skipping", "notebook", notebookName, "namespace", namespace)
+			logger.V(1).Info("Notebook missing username annotation, skipping", "notebook", notebookName, "namespace", namespace)
 			continue
 		}
 
 		// Check if user is in the class group
 		if !userSet[username] {
 			// User not in group - delete notebook and PVC
-			log.Info("Deleting notebook for user not in class group",
+			logger.Info("Deleting notebook for user not in class group",
 				"notebook", notebookName,
 				"namespace", namespace,
 				"class", class.Name,
 				"user", username)
 
 			if err := r.deleteNotebookAndPVC(ctx, notebookName, namespace); err != nil {
-				log.Error(err, "Failed to delete notebook and PVC", "notebook", notebookName, "namespace", namespace)
+				logger.Error(err, "Failed to delete notebook and PVC", "notebook", notebookName, "namespace", namespace)
 			}
 			continue
 		}
@@ -289,7 +293,7 @@ func (r *ClassCullerReconciler) cullNotebooksMultiNamespace(ctx context.Context,
 
 		// Check if notebook has exceeded the cutoff time
 		if ageSeconds > cutoffSeconds {
-			log.Info("Stopping notebook that exceeded cutoff time",
+			logger.Info("Stopping notebook that exceeded cutoff time",
 				"notebook", notebookName,
 				"namespace", namespace,
 				"class", class.Name,
@@ -306,13 +310,13 @@ func (r *ClassCullerReconciler) cullNotebooksMultiNamespace(ctx context.Context,
 			notebook.SetAnnotations(annotations)
 
 			if err := r.Update(ctx, &notebook); err != nil {
-				log.Error(err, "Failed to stop notebook", "notebook", notebookName, "namespace", namespace)
+				logger.Error(err, "Failed to stop notebook", "notebook", notebookName, "namespace", namespace)
 				continue
 			}
 
-			log.Info("Successfully stopped notebook", "notebook", notebookName, "namespace", namespace)
+			logger.Info("Successfully stopped notebook", "notebook", notebookName, "namespace", namespace)
 		} else {
-			log.V(1).Info("Notebook within cutoff time",
+			logger.V(1).Info("Notebook within cutoff time",
 				"notebook", notebookName,
 				"namespace", namespace,
 				"user", username,
@@ -321,12 +325,12 @@ func (r *ClassCullerReconciler) cullNotebooksMultiNamespace(ctx context.Context,
 		}
 	}
 
-	log.Info("Matched notebooks in multi-namespace class", "class", class.Name, "matched", matched)
+	logger.Info("Matched notebooks in multi-namespace class", "class", class.Name, "matched", matched)
 	return nil
 }
 
 func (r *ClassCullerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
 	var class nercv1alpha1.Class
 	if err := r.Get(ctx, req.NamespacedName, &class); err != nil {
@@ -335,12 +339,12 @@ func (r *ClassCullerReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	// Skip if notebook culling is not enabled
 	if !class.Spec.NotebookCulling.Enabled {
-		log.V(1).Info("Notebook culling not enabled for class", "class", class.Name)
+		logger.V(1).Info("Notebook culling not enabled for class", "class", class.Name)
 		return ctrl.Result{}, nil
 	}
 
 	if class.Spec.NotebookCulling.Cutoff <= 0 {
-		log.V(1).Info("Invalid cutoff time for class", "class", class.Name)
+		logger.V(1).Info("Invalid cutoff time for class", "class", class.Name)
 		return ctrl.Result{}, nil
 	}
 
@@ -349,20 +353,20 @@ func (r *ClassCullerReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Handle multi-namespace classes differently
 	if class.Spec.Deployment.MultiNamespace {
 		if err := r.cullNotebooksMultiNamespace(ctx, &class, now); err != nil {
-			log.Error(err, "Failed to cull notebooks in multi-namespace class", "class", class.Name)
+			logger.Error(err, "Failed to cull notebooks in multi-namespace class", "class", class.Name)
 			return ctrl.Result{RequeueAfter: time.Minute * 5}, err
 		}
 	} else {
 		// Single namespace mode - process specific namespaces from status
 		namespaces := class.Status.Namespaces
 		if len(namespaces) == 0 {
-			log.V(1).Info("No namespaces found for class", "class", class.Name)
+			logger.V(1).Info("No namespaces found for class", "class", class.Name)
 			return ctrl.Result{}, nil
 		}
 
 		for _, namespace := range namespaces {
 			if err := r.cullNotebooksInNamespace(ctx, namespace, now); err != nil {
-				log.Error(err, "Failed to cull notebooks in namespace", "namespace", namespace)
+				logger.Error(err, "Failed to cull notebooks in namespace", "namespace", namespace)
 				// Continue with other namespaces even if one fails
 				continue
 			}
@@ -374,7 +378,7 @@ func (r *ClassCullerReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 }
 
 func (r *ClassCullerReconciler) cullNotebooksInNamespace(ctx context.Context, namespace string, now time.Time) error {
-	log := log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
 	// Build user-to-cutoff map for all classes in this namespace
 	userMap, err := r.buildUserCutoffMap(ctx, namespace)
@@ -407,7 +411,7 @@ func (r *ClassCullerReconciler) cullNotebooksInNamespace(ctx context.Context, na
 		// Get username from notebook annotations
 		username := getNotebookUsername(&notebook)
 		if username == "" {
-			log.V(1).Info("Notebook missing username annotation, skipping", "notebook", notebookName, "namespace", namespace)
+			logger.V(1).Info("Notebook missing username annotation, skipping", "notebook", notebookName, "namespace", namespace)
 			continue
 		}
 
@@ -415,13 +419,13 @@ func (r *ClassCullerReconciler) cullNotebooksInNamespace(ctx context.Context, na
 		userInfo, userExists := userMap[username]
 		if !userExists {
 			// User not in any group - delete notebook and PVC
-			log.Info("Deleting notebook for user not in any class group",
+			logger.Info("Deleting notebook for user not in any class group",
 				"notebook", notebookName,
 				"namespace", namespace,
 				"user", username)
 
 			if err := r.deleteNotebookAndPVC(ctx, notebookName, namespace); err != nil {
-				log.Error(err, "Failed to delete notebook and PVC", "notebook", notebookName, "namespace", namespace)
+				logger.Error(err, "Failed to delete notebook and PVC", "notebook", notebookName, "namespace", namespace)
 			}
 			continue
 		}
@@ -434,7 +438,7 @@ func (r *ClassCullerReconciler) cullNotebooksInNamespace(ctx context.Context, na
 
 		// Check if notebook has exceeded the user's cutoff time
 		if ageSeconds > cutoffSeconds {
-			log.Info("Stopping notebook that exceeded user's cutoff time",
+			logger.Info("Stopping notebook that exceeded user's cutoff time",
 				"notebook", notebookName,
 				"namespace", namespace,
 				"user", username,
@@ -451,13 +455,13 @@ func (r *ClassCullerReconciler) cullNotebooksInNamespace(ctx context.Context, na
 			notebook.SetAnnotations(annotations)
 
 			if err := r.Update(ctx, &notebook); err != nil {
-				log.Error(err, "Failed to stop notebook", "notebook", notebookName, "namespace", namespace)
+				logger.Error(err, "Failed to stop notebook", "notebook", notebookName, "namespace", namespace)
 				continue
 			}
 
-			log.Info("Successfully stopped notebook", "notebook", notebookName, "namespace", namespace)
+			logger.Info("Successfully stopped notebook", "notebook", notebookName, "namespace", namespace)
 		} else {
-			log.V(1).Info("Notebook within cutoff time",
+			logger.V(1).Info("Notebook within cutoff time",
 				"notebook", notebookName,
 				"namespace", namespace,
 				"user", username,
