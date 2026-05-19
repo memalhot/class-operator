@@ -14,7 +14,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	nercv1alpha1 "github.com/memalhot/class-operator/v1alpha1"
 )
@@ -467,9 +469,63 @@ func (r *ClassCullerReconciler) cullNotebooksInNamespace(ctx context.Context, na
 	return nil
 }
 
+// notebookToClassRequests maps Notebook changes to Class reconcile requests
+func (r *ClassCullerReconciler) notebookToClassRequests(ctx context.Context, obj client.Object) []reconcile.Request {
+	notebook, ok := obj.(*unstructured.Unstructured)
+	if !ok {
+		return nil
+	}
+
+	namespace := notebook.GetNamespace()
+
+	// Find all Class resources that manage this namespace
+	classList := &nercv1alpha1.ClassList{}
+	if err := r.List(ctx, classList); err != nil {
+		log.FromContext(ctx).Error(err, "Failed to list classes for notebook watch", "notebook", notebook.GetName())
+		return nil
+	}
+
+	var requests []reconcile.Request
+	for _, class := range classList.Items {
+		// Check if this class has culling enabled
+		if !class.Spec.NotebookCulling.Enabled {
+			continue
+		}
+
+		// Check if this class manages the namespace
+		if slices.Contains(class.Status.Namespaces, namespace) {
+			requests = append(requests, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      class.Name,
+					Namespace: class.Namespace,
+				},
+			})
+		}
+	}
+
+	if len(requests) > 0 {
+		log.FromContext(ctx).Info("Notebook change detected, triggering class reconciliation",
+			"notebook", notebook.GetName(), "namespace", namespace, "classes", len(requests))
+	}
+
+	return requests
+}
+
 func (r *ClassCullerReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// Create unstructured type for Notebook
+	notebook := &unstructured.Unstructured{}
+	notebook.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "kubeflow.org",
+		Version: "v1",
+		Kind:    "Notebook",
+	})
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&nercv1alpha1.Class{}).
+		Watches(
+			notebook,
+			handler.EnqueueRequestsFromMapFunc(r.notebookToClassRequests),
+		).
 		Named("culler-controller").
 		Complete(r)
 }
