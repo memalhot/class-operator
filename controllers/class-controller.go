@@ -10,6 +10,7 @@ import (
 
 	userv1 "github.com/openshift/api/user/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -32,7 +33,9 @@ type ClassReconciler struct {
 // +kubebuilder:rbac:groups=nerc.mghpcc.org,resources=classes/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=nerc.mghpcc.org,resources=classes/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=resourcequotas,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=user.openshift.io,resources=groups,verbs=get;list;watch
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;list;watch;create;update;patch;delete
 
 const classFinalizer = "nerc.mghpcc.org/class-finalizer"
 
@@ -95,6 +98,22 @@ func (r *ClassReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		if err := r.ensureNamespace(ctx, &class, namespaceName); err != nil {
 			return ctrl.Result{}, err
 		}
+
+		// Grant edit permissions to all students in the shared namespace (if studentsGroup is specified)
+		if class.Spec.StudentsGroup != "" {
+			users, err := r.getGroupUsers(ctx, class.Spec.StudentsGroup)
+			if err != nil {
+				logger.Info("Could not get group users, skipping RoleBinding reconciliation", "class", class.Name, "group", class.Spec.StudentsGroup, "error", err.Error())
+				// Don't fail the reconciliation - just skip RoleBinding reconciliation
+			} else {
+				// Reconcile RoleBindings - add new ones and remove old ones
+				if err := r.reconcileRoleBindings(ctx, namespaceName, users); err != nil {
+					logger.Error(err, "Failed to reconcile RoleBindings in shared namespace", "namespace", namespaceName)
+					// Continue even if reconciliation fails
+				}
+			}
+		}
+
 		createdNamespaces = []string{namespaceName}
 	}
 
@@ -150,6 +169,113 @@ func (r *ClassReconciler) ensureNamespace(ctx context.Context, class *nercv1alph
 	return nil
 }
 
+// ensureRoleBinding creates a RoleBinding if it doesn't exist to grant edit permissions to a user
+func (r *ClassReconciler) ensureRoleBinding(ctx context.Context, namespaceName, username string) error {
+	logger := log.FromContext(ctx)
+
+	roleBindingName := fmt.Sprintf("%s-edit", username)
+	roleBinding := &rbacv1.RoleBinding{}
+	err := r.Get(ctx, types.NamespacedName{Name: roleBindingName, Namespace: namespaceName}, roleBinding)
+
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// Create the RoleBinding
+			logger.Info("Creating RoleBinding for user", "user", username, "namespace", namespaceName)
+
+			roleBinding = &rbacv1.RoleBinding{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      roleBindingName,
+					Namespace: namespaceName,
+					Labels: map[string]string{
+						"nerc.mghpcc.org/managed-by": "class-operator",
+					},
+				},
+				RoleRef: rbacv1.RoleRef{
+					APIGroup: "rbac.authorization.k8s.io",
+					Kind:     "ClusterRole",
+					Name:     "edit",
+				},
+				Subjects: []rbacv1.Subject{
+					{
+						Kind: "User",
+						Name: username,
+					},
+				},
+			}
+
+			if err := r.Create(ctx, roleBinding); err != nil {
+				logger.Error(err, "Failed to create RoleBinding", "user", username, "namespace", namespaceName)
+				return err
+			}
+
+			logger.Info("Successfully created RoleBinding", "user", username, "namespace", namespaceName)
+		} else {
+			logger.Error(err, "Failed to get RoleBinding", "user", username, "namespace", namespaceName)
+			return err
+		}
+	} else {
+		logger.V(1).Info("RoleBinding already exists", "user", username, "namespace", namespaceName)
+	}
+
+	return nil
+}
+
+// reconcileRoleBindings ensures RoleBindings match the current user list
+// It creates RoleBindings for new users and removes RoleBindings for users no longer in the list
+func (r *ClassReconciler) reconcileRoleBindings(ctx context.Context, namespaceName string, currentUsers []string) error {
+	logger := log.FromContext(ctx)
+
+	// Create a set of current usernames for quick lookup
+	currentUserSet := make(map[string]bool)
+	for _, username := range currentUsers {
+		username = strings.TrimSpace(username)
+		if username != "" {
+			currentUserSet[username] = true
+		}
+	}
+
+	// Get all RoleBindings in the namespace managed by class-operator
+	roleBindingList := &rbacv1.RoleBindingList{}
+	if err := r.List(ctx, roleBindingList, client.InNamespace(namespaceName), client.MatchingLabels{
+		"nerc.mghpcc.org/managed-by": "class-operator",
+	}); err != nil {
+		logger.Error(err, "Failed to list RoleBindings", "namespace", namespaceName)
+		return err
+	}
+
+	// Remove RoleBindings for users no longer in the group
+	for _, rb := range roleBindingList.Items {
+		// Extract username from RoleBinding name (format: {username}-edit)
+		if !strings.HasSuffix(rb.Name, "-edit") {
+			continue
+		}
+		username := strings.TrimSuffix(rb.Name, "-edit")
+
+		if !currentUserSet[username] {
+			// User is no longer in the group, delete the RoleBinding
+			logger.Info("Removing RoleBinding for user no longer in group", "user", username, "namespace", namespaceName)
+			if err := r.Delete(ctx, &rb); err != nil {
+				if !errors.IsNotFound(err) {
+					logger.Error(err, "Failed to delete RoleBinding", "user", username, "namespace", namespaceName)
+					// Continue with other RoleBindings even if one fails
+				}
+			} else {
+				logger.Info("Successfully removed RoleBinding", "user", username, "namespace", namespaceName)
+			}
+		}
+	}
+
+	// Create RoleBindings for current users
+	for username := range currentUserSet {
+		if err := r.ensureRoleBinding(ctx, namespaceName, username); err != nil {
+			logger.Error(err, "Failed to ensure RoleBinding for user", "user", username, "namespace", namespaceName)
+			// Continue with other users even if one fails
+		}
+	}
+
+	return nil
+}
+
 // createMultiNamespaces creates a namespace for each user in the students group
 func (r *ClassReconciler) createMultiNamespaces(ctx context.Context, class *nercv1alpha1.Class) ([]string, error) {
 	logger := log.FromContext(ctx)
@@ -157,8 +283,8 @@ func (r *ClassReconciler) createMultiNamespaces(ctx context.Context, class *nerc
 	// Get users from the students group
 	users, err := r.getGroupUsers(ctx, class.Spec.StudentsGroup)
 	if err != nil {
-		logger.Error(err, "Failed to get group users", "class", class.Name, "group", class.Spec.StudentsGroup)
-		return nil, err
+		logger.Info("Could not get group users, no namespaces will be created", "class", class.Name, "group", class.Spec.StudentsGroup, "error", err.Error())
+		return []string{}, nil
 	}
 
 	if len(users) == 0 {
@@ -195,10 +321,45 @@ func (r *ClassReconciler) createMultiNamespaces(ctx context.Context, class *nerc
 			continue
 		}
 
+		// Reconcile RoleBindings for this user's namespace (should only have this one user)
+		if err := r.reconcileRoleBindings(ctx, namespaceName, []string{username}); err != nil {
+			logger.Error(err, "Failed to reconcile RoleBindings for user", "user", username, "namespace", namespaceName)
+			// Don't skip adding to createdNamespaces - namespace exists even if RoleBinding failed
+		}
+
 		createdNamespaces = append(createdNamespaces, namespaceName)
 	}
 
 	logger.Info("Completed namespace creation", "class", class.Name, "created", len(createdNamespaces))
+
+	// Clean up namespaces for users who are no longer in the group
+	// Compare current namespaces in status with what we just created
+	createdNamespaceSet := make(map[string]bool)
+	for _, ns := range createdNamespaces {
+		createdNamespaceSet[ns] = true
+	}
+
+	// Check if there are namespaces in status that shouldn't exist anymore
+	for _, statusNamespace := range class.Status.Namespaces {
+		if !createdNamespaceSet[statusNamespace] {
+			// This namespace exists but the user is no longer in the group
+			logger.Info("Removing namespace for user no longer in group", "namespace", statusNamespace)
+			namespace := &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: statusNamespace,
+				},
+			}
+			if err := r.Delete(ctx, namespace); err != nil {
+				if !errors.IsNotFound(err) {
+					logger.Error(err, "Failed to delete namespace for removed user", "namespace", statusNamespace)
+					// Don't return error, continue with cleanup
+				}
+			} else {
+				logger.Info("Successfully removed namespace", "namespace", statusNamespace)
+			}
+		}
+	}
+
 	return createdNamespaces, nil
 }
 

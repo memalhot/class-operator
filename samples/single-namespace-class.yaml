@@ -14,7 +14,7 @@ spec:
   deployment:
     multiNamespace: false
 
-  studentsGroup: "cs101-students"
+  studentsGroup: "students"
 
   resourceQuota:
     cpu: "2"

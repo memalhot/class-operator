@@ -1,7 +1,7 @@
 apiVersion: user.openshift.io/v1
 kind: Group
 metadata:
-  name: cs202-students
+  name: students
 users:
   - alice
   - bob

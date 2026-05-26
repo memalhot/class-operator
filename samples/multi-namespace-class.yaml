@@ -17,7 +17,7 @@ spec:
     studentNamespacePrefix: "cs202-"
 
   # OpenShift group containing students
-  studentsGroup: "cs202-students"
+  studentsGroup: "students"
 
   resourceQuota:
     cpu: "2"

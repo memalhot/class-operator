@@ -50,7 +50,7 @@ echo ""
 cd "$(dirname "$0")/.."
 
 # Step 1: Create kind cluster
-echo -e "${YELLOW}[1/9] Creating kind cluster...${NC}"
+echo -e "${YELLOW}[1/11] Creating kind cluster...${NC}"
 if kind get clusters | grep -q "^${CLUSTER_NAME}$"; then
     echo "Cluster already exists, deleting..."
     kind delete cluster --name ${CLUSTER_NAME}
@@ -60,7 +60,7 @@ echo -e "${GREEN}✓ Cluster created${NC}"
 echo ""
 
 # Step 2: Install Class CRD
-echo -e "${YELLOW}[2/9] Installing Class CRD...${NC}"
+echo -e "${YELLOW}[2/11] Installing Class CRD...${NC}"
 kubectl apply -f config/crd/nerc.mghpcc.org_classes.yaml
 sleep 2
 kubectl get crd classes.nerc.mghpcc.org
@@ -68,7 +68,7 @@ echo -e "${GREEN}✓ CRD installed${NC}"
 echo ""
 
 # Step 3: Install OpenShift Group CRD (for multi-namespace testing)
-echo -e "${YELLOW}[3/9] Installing OpenShift Group CRD...${NC}"
+echo -e "${YELLOW}[3/11] Installing OpenShift Group CRD...${NC}"
 cat <<EOF | kubectl apply -f -
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -107,14 +107,14 @@ echo -e "${GREEN}✓ Group CRD installed${NC}"
 echo ""
 
 # Step 4: Create test group
-echo -e "${YELLOW}[4/9] Creating test OpenShift group...${NC}"
+echo -e "${YELLOW}[4/11] Creating test OpenShift group...${NC}"
 kubectl apply -f samples/test-group.yaml
-kubectl get group cs202-students -o yaml | grep -A 5 "users:"
+kubectl get group students -o yaml | grep -A 5 "users:"
 echo -e "${GREEN}✓ Test group created${NC}"
 echo ""
 
 # Step 5: Start operator in background
-echo -e "${YELLOW}[5/9] Starting operator...${NC}"
+echo -e "${YELLOW}[5/11] Starting operator...${NC}"
 go run main.go > /tmp/operator-test.log 2>&1 &
 OPERATOR_PID=$!
 sleep 5
@@ -130,7 +130,7 @@ echo -e "${GREEN}✓ Operator started (PID: $OPERATOR_PID)${NC}"
 echo ""
 
 # Step 6: Test single-namespace class
-echo -e "${YELLOW}[6/9] Testing single-namespace class creation...${NC}"
+echo -e "${YELLOW}[6/11] Testing single-namespace class creation...${NC}"
 kubectl apply -f samples/single-namespace-class.yaml
 sleep 3
 
@@ -162,6 +162,28 @@ if [ $? -eq 0 ]; then
         echo -e "${RED}✗ Finalizer not found${NC}"
         exit 1
     fi
+
+    # Verify RoleBindings for all users in single-namespace
+    echo "Verifying RoleBindings for users in shared namespace..."
+    EXPECTED_USERS=("alice" "bob" "charlie" "david")
+    for user in "${EXPECTED_USERS[@]}"; do
+        ROLEBINDING_NAME="${user}-edit"
+        kubectl get rolebinding $ROLEBINDING_NAME -n $NAMESPACE_NAME > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            # Verify RoleBinding grants edit permissions
+            ROLE_REF=$(kubectl get rolebinding $ROLEBINDING_NAME -n $NAMESPACE_NAME -o jsonpath='{.roleRef.name}')
+            if [ "$ROLE_REF" == "edit" ]; then
+                echo -e "${GREEN}✓ RoleBinding $ROLEBINDING_NAME grants edit permissions${NC}"
+            else
+                echo -e "${RED}✗ RoleBinding $ROLEBINDING_NAME does not grant edit permissions${NC}"
+                exit 1
+            fi
+        else
+            echo -e "${RED}✗ RoleBinding $ROLEBINDING_NAME not found in namespace $NAMESPACE_NAME${NC}"
+            exit 1
+        fi
+    done
+    echo -e "${GREEN}✓ All users have edit permissions in shared namespace${NC}"
 else
     echo -e "${RED}✗ Namespace not created${NC}"
     exit 1
@@ -169,7 +191,7 @@ fi
 echo ""
 
 # Step 7: Test multi-namespace class
-echo -e "${YELLOW}[7/9] Testing multi-namespace class creation...${NC}"
+echo -e "${YELLOW}[7/11] Testing multi-namespace class creation...${NC}"
 kubectl apply -f samples/multi-namespace-class.yaml
 sleep 5
 
@@ -190,6 +212,36 @@ if [ "$ACTUAL_COUNT" -eq "$EXPECTED_COUNT" ]; then
         echo -e "${RED}✗ Namespaces missing hash suffix${NC}"
         exit 1
     fi
+
+    # Verify RoleBindings for each user in their own namespace
+    echo "Verifying RoleBindings in multi-namespace mode..."
+    MULTI_USERS=("alice" "bob" "charlie" "david")
+    for user in "${MULTI_USERS[@]}"; do
+        # Find the namespace for this user
+        USER_NAMESPACE=$(kubectl get namespaces -l nerc.mghpcc.org/class=multi-test-class -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | grep "cs202-${user}-")
+        if [ ! -z "$USER_NAMESPACE" ]; then
+            ROLEBINDING_NAME="${user}-edit"
+            kubectl get rolebinding $ROLEBINDING_NAME -n $USER_NAMESPACE > /dev/null 2>&1
+            if [ $? -eq 0 ]; then
+                # Verify RoleBinding grants edit permissions
+                ROLE_REF=$(kubectl get rolebinding $ROLEBINDING_NAME -n $USER_NAMESPACE -o jsonpath='{.roleRef.name}')
+                SUBJECT=$(kubectl get rolebinding $ROLEBINDING_NAME -n $USER_NAMESPACE -o jsonpath='{.subjects[0].name}')
+                if [ "$ROLE_REF" == "edit" ] && [ "$SUBJECT" == "$user" ]; then
+                    echo -e "${GREEN}✓ User $user has edit permissions in namespace $USER_NAMESPACE${NC}"
+                else
+                    echo -e "${RED}✗ RoleBinding for $user is incorrect (role: $ROLE_REF, subject: $SUBJECT)${NC}"
+                    exit 1
+                fi
+            else
+                echo -e "${RED}✗ RoleBinding $ROLEBINDING_NAME not found in namespace $USER_NAMESPACE${NC}"
+                exit 1
+            fi
+        else
+            echo -e "${RED}✗ Namespace for user $user not found${NC}"
+            exit 1
+        fi
+    done
+    echo -e "${GREEN}✓ All users have edit permissions in their respective namespaces${NC}"
 else
     echo -e "${RED}✗ Expected $EXPECTED_COUNT namespaces, found $ACTUAL_COUNT${NC}"
     exit 1
@@ -197,15 +249,15 @@ fi
 echo ""
 
 # Step 8: Test dynamic user addition and reconciliation
-echo -e "${YELLOW}[8/9] Testing dynamic user addition and reconciliation...${NC}"
+echo -e "${YELLOW}[8/11] Testing dynamic user addition and reconciliation...${NC}"
 
 # Add a new user to the group
-echo "Adding user 'eve' to cs202-students group..."
-kubectl patch group cs202-students --type=json -p='[{"op":"add","path":"/users/-","value":"eve"}]'
+echo "Adding user 'eve' to students group..."
+kubectl patch group students --type=json -p='[{"op":"add","path":"/users/-","value":"eve"}]'
 echo -e "${GREEN}✓ User added to group${NC}"
 
 # Verify group was updated
-GROUP_USERS=$(kubectl get group cs202-students -o jsonpath='{.users[*]}')
+GROUP_USERS=$(kubectl get group students -o jsonpath='{.users[*]}')
 if [[ $GROUP_USERS == *"eve"* ]]; then
     echo -e "${GREEN}✓ Group updated successfully${NC}"
 else
@@ -250,6 +302,25 @@ if [ ! -z "$EVE_NAMESPACE" ]; then
         kubectl get namespaces -l nerc.mghpcc.org/class=multi-test-class
         exit 1
     fi
+
+    # Verify RoleBinding was created for the newly added user
+    echo "Verifying RoleBinding for newly added user eve..."
+    ROLEBINDING_NAME="eve-edit"
+    kubectl get rolebinding $ROLEBINDING_NAME -n $EVE_NAMESPACE > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        # Verify RoleBinding grants edit permissions
+        ROLE_REF=$(kubectl get rolebinding $ROLEBINDING_NAME -n $EVE_NAMESPACE -o jsonpath='{.roleRef.name}')
+        SUBJECT=$(kubectl get rolebinding $ROLEBINDING_NAME -n $EVE_NAMESPACE -o jsonpath='{.subjects[0].name}')
+        if [ "$ROLE_REF" == "edit" ] && [ "$SUBJECT" == "eve" ]; then
+            echo -e "${GREEN}✓ User eve has edit permissions in namespace $EVE_NAMESPACE${NC}"
+        else
+            echo -e "${RED}✗ RoleBinding for eve is incorrect (role: $ROLE_REF, subject: $SUBJECT)${NC}"
+            exit 1
+        fi
+    else
+        echo -e "${RED}✗ RoleBinding $ROLEBINDING_NAME not found in namespace $EVE_NAMESPACE${NC}"
+        exit 1
+    fi
 else
     echo -e "${RED}✗ Namespace for eve was not created after reconciliation${NC}"
     echo "Current namespaces:"
@@ -258,8 +329,84 @@ else
 fi
 echo ""
 
-# Step 9: Test namespace cleanup on deletion
-echo -e "${YELLOW}[9/9] Testing namespace cleanup on class deletion...${NC}"
+# Step 9: Test user removal and cleanup
+echo -e "${YELLOW}[9/11] Testing user removal and RoleBinding/namespace cleanup...${NC}"
+
+# Test 9a: Remove user from group in multi-namespace mode
+echo "Removing user 'alice' from students group..."
+kubectl patch group students --type=json -p='[{"op":"remove","path":"/users/0"}]'
+GROUP_USERS_AFTER=$(kubectl get group students -o jsonpath='{.users[*]}')
+if [[ $GROUP_USERS_AFTER != *"alice"* ]]; then
+    echo -e "${GREEN}✓ User alice removed from group${NC}"
+else
+    echo -e "${RED}✗ User alice still in group${NC}"
+    exit 1
+fi
+
+# Wait for reconciliation
+echo "Waiting for automatic reconciliation after user removal..."
+sleep 5
+
+# Verify alice's namespace was deleted
+ALICE_NAMESPACE=$(kubectl get namespaces -l nerc.mghpcc.org/class=multi-test-class -o jsonpath='{.items[*].metadata.name}' | grep -o 'cs202-alice-[a-f0-9]\{6\}' || echo "")
+if [ -z "$ALICE_NAMESPACE" ]; then
+    echo -e "${GREEN}✓ Namespace for removed user alice was deleted${NC}"
+else
+    echo -e "${RED}✗ Namespace for alice still exists: $ALICE_NAMESPACE${NC}"
+    exit 1
+fi
+
+# Verify total namespace count is now 4 (bob, charlie, david, eve)
+TOTAL_COUNT=$(kubectl get namespaces -l nerc.mghpcc.org/class=multi-test-class --no-headers | wc -l)
+if [ "$TOTAL_COUNT" -eq 4 ]; then
+    echo -e "${GREEN}✓ Correct number of namespaces after user removal: $TOTAL_COUNT${NC}"
+else
+    echo -e "${RED}✗ Expected 4 namespaces, found $TOTAL_COUNT${NC}"
+    kubectl get namespaces -l nerc.mghpcc.org/class=multi-test-class
+    exit 1
+fi
+
+# Test 9b: Remove user from group in single-namespace mode
+echo "Removing user 'bob' from students group..."
+kubectl patch group students --type=json -p='[{"op":"remove","path":"/users/0"}]'
+GROUP_USERS_FINAL=$(kubectl get group students -o jsonpath='{.users[*]}')
+if [[ $GROUP_USERS_FINAL != *"bob"* ]]; then
+    echo -e "${GREEN}✓ User bob removed from group${NC}"
+else
+    echo -e "${RED}✗ User bob still in group${NC}"
+    exit 1
+fi
+
+# Wait for reconciliation
+echo "Waiting for automatic reconciliation in single-namespace mode..."
+sleep 5
+
+# Verify bob's RoleBinding was deleted from single-namespace
+kubectl get rolebinding bob-edit -n $NAMESPACE_NAME > /dev/null 2>&1
+if [ $? -ne 0 ]; then
+    echo -e "${GREEN}✓ RoleBinding for removed user bob was deleted from shared namespace${NC}"
+else
+    echo -e "${RED}✗ RoleBinding for bob still exists in shared namespace${NC}"
+    exit 1
+fi
+
+# Verify other users' RoleBindings still exist
+REMAINING_USERS=("charlie" "david" "eve")
+for user in "${REMAINING_USERS[@]}"; do
+    kubectl get rolebinding ${user}-edit -n $NAMESPACE_NAME > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✓ RoleBinding for $user still exists in shared namespace${NC}"
+    else
+        echo -e "${RED}✗ RoleBinding for $user was incorrectly deleted${NC}"
+        exit 1
+    fi
+done
+
+echo -e "${GREEN}✓ User removal cleanup works correctly${NC}"
+echo ""
+
+# Step 10: Test namespace cleanup on deletion
+echo -e "${YELLOW}[10/11] Testing namespace cleanup on class deletion...${NC}"
 
 # Delete multi-namespace class
 echo "Deleting multi-namespace class..."
@@ -301,8 +448,14 @@ echo "  ✓ Kind cluster created and configured"
 echo "  ✓ CRDs installed (Class, Group)"
 echo "  ✓ Operator started successfully"
 echo "  ✓ Single-namespace class created with labels and finalizer"
+echo "  ✓ RoleBindings created for all users in single-namespace mode (edit permissions)"
 echo "  ✓ Multi-namespace class created (4 namespaces with hash suffix)"
+echo "  ✓ RoleBindings created for each user in their own namespace (edit permissions)"
 echo "  ✓ Dynamic user addition triggers reconciliation (5th namespace created)"
+echo "  ✓ RoleBinding created for newly added user with edit permissions"
+echo "  ✓ User removal from group triggers cleanup:"
+echo "    - Namespace deleted in multi-namespace mode"
+echo "    - RoleBinding deleted in single-namespace mode"
 echo "  ✓ Namespace cleanup works on class deletion (finalizers)"
 echo ""
 echo "Operator logs saved to: /tmp/operator-test.log"
