@@ -12,6 +12,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -220,6 +221,121 @@ func (r *ClassReconciler) ensureRoleBinding(ctx context.Context, namespaceName, 
 	return nil
 }
 
+// ensureResourceQuota creates or updates a ResourceQuota in a namespace based on the class spec
+func (r *ClassReconciler) ensureResourceQuota(
+	ctx context.Context, class *nercv1alpha1.Class, namespaceName string,
+) error {
+	logger := log.FromContext(ctx)
+
+	// Skip if no resource quota is specified
+	if class.Spec.ResourceQuota.CPU == "" && class.Spec.ResourceQuota.Memory == "" &&
+		class.Spec.ResourceQuota.Pods == "" && class.Spec.ResourceQuota.PersistentVolumeClaims == "" &&
+		class.Spec.ResourceQuota.GPUs == "" {
+		logger.V(1).Info("No resource quota specified, skipping", "namespace", namespaceName)
+		return nil
+	}
+
+	quotaName := "class-quota"
+	resourceQuota := &corev1.ResourceQuota{}
+	err := r.Get(ctx, types.NamespacedName{Name: quotaName, Namespace: namespaceName}, resourceQuota)
+
+	// Build the resource list
+	hard := corev1.ResourceList{}
+	if class.Spec.ResourceQuota.CPU != "" {
+		quantity, err := resource.ParseQuantity(class.Spec.ResourceQuota.CPU)
+		if err != nil {
+			logger.Error(err, "Failed to parse CPU quantity", "cpu", class.Spec.ResourceQuota.CPU)
+			return err
+		}
+		hard[corev1.ResourceRequestsCPU] = quantity
+		hard[corev1.ResourceLimitsCPU] = quantity
+	}
+
+	if class.Spec.ResourceQuota.Memory != "" {
+		quantity, err := resource.ParseQuantity(class.Spec.ResourceQuota.Memory)
+		if err != nil {
+			logger.Error(err, "Failed to parse Memory quantity", "memory", class.Spec.ResourceQuota.Memory)
+			return err
+		}
+		hard[corev1.ResourceRequestsMemory] = quantity
+		hard[corev1.ResourceLimitsMemory] = quantity
+	}
+
+	if class.Spec.ResourceQuota.Pods != "" {
+		quantity, err := resource.ParseQuantity(class.Spec.ResourceQuota.Pods)
+		if err != nil {
+			logger.Error(err, "Failed to parse Pods quantity", "pods", class.Spec.ResourceQuota.Pods)
+			return err
+		}
+		hard[corev1.ResourcePods] = quantity
+	}
+
+	if class.Spec.ResourceQuota.PersistentVolumeClaims != "" {
+		quantity, err := resource.ParseQuantity(class.Spec.ResourceQuota.PersistentVolumeClaims)
+		if err != nil {
+			logger.Error(
+			err, "Failed to parse PersistentVolumeClaims quantity",
+			"pvcs", class.Spec.ResourceQuota.PersistentVolumeClaims,
+		)
+			return err
+		}
+		hard[corev1.ResourcePersistentVolumeClaims] = quantity
+	}
+
+	if class.Spec.ResourceQuota.GPUs != "" {
+		quantity, err := resource.ParseQuantity(class.Spec.ResourceQuota.GPUs)
+		if err != nil {
+			logger.Error(err, "Failed to parse GPU quantity", "gpus", class.Spec.ResourceQuota.GPUs)
+			return err
+		}
+		hard[corev1.ResourceName("requests.nvidia.com/gpu")] = quantity
+	}
+
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// Create the ResourceQuota
+			logger.Info("Creating ResourceQuota", "namespace", namespaceName)
+
+			resourceQuota = &corev1.ResourceQuota{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      quotaName,
+					Namespace: namespaceName,
+					Labels: map[string]string{
+						"nerc.mghpcc.org/class":      class.Name,
+						"nerc.mghpcc.org/managed-by": "class-operator",
+					},
+				},
+				Spec: corev1.ResourceQuotaSpec{
+					Hard: hard,
+				},
+			}
+
+			if err := r.Create(ctx, resourceQuota); err != nil {
+				logger.Error(err, "Failed to create ResourceQuota", "namespace", namespaceName)
+				return err
+			}
+
+			logger.Info("Successfully created ResourceQuota", "namespace", namespaceName)
+		} else {
+			logger.Error(err, "Failed to get ResourceQuota", "namespace", namespaceName)
+			return err
+		}
+	} else {
+		// Update the ResourceQuota if it exists
+		logger.V(1).Info("Updating existing ResourceQuota", "namespace", namespaceName)
+		resourceQuota.Spec.Hard = hard
+
+		if err := r.Update(ctx, resourceQuota); err != nil {
+			logger.Error(err, "Failed to update ResourceQuota", "namespace", namespaceName)
+			return err
+		}
+
+		logger.Info("Successfully updated ResourceQuota", "namespace", namespaceName)
+	}
+
+	return nil
+}
+
 // reconcileRoleBindings ensures RoleBindings match the current user list
 // It creates RoleBindings for new users and removes RoleBindings for users no longer in the list
 func (r *ClassReconciler) reconcileRoleBindings(ctx context.Context, namespaceName string, currentUsers []string) error {
@@ -325,6 +441,12 @@ func (r *ClassReconciler) createMultiNamespaces(ctx context.Context, class *nerc
 		if err := r.reconcileRoleBindings(ctx, namespaceName, []string{username}); err != nil {
 			logger.Error(err, "Failed to reconcile RoleBindings for user", "user", username, "namespace", namespaceName)
 			// Don't skip adding to createdNamespaces - namespace exists even if RoleBinding failed
+		}
+
+		// Create ResourceQuota for multi-namespace deployments
+		if err := r.ensureResourceQuota(ctx, class, namespaceName); err != nil {
+			logger.Error(err, "Failed to ensure ResourceQuota for user", "user", username, "namespace", namespaceName)
+			// Don't skip adding to createdNamespaces - namespace exists even if ResourceQuota failed
 		}
 
 		createdNamespaces = append(createdNamespaces, namespaceName)
