@@ -37,6 +37,7 @@ type ClassReconciler struct {
 // +kubebuilder:rbac:groups="",resources=resourcequotas,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=user.openshift.io,resources=groups,verbs=get;list;watch
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;list;watch;create;update;patch;delete
+//nolint:lll
 
 const classFinalizer = "nerc.mghpcc.org/class-finalizer"
 
@@ -85,11 +86,7 @@ func (r *ClassReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	if class.Spec.Deployment.MultiNamespace {
 		// Multi-namespace mode: create namespace per user
 		logger.Info("Processing multi-namespace class", "class", class.Name)
-		namespaces, err := r.createMultiNamespaces(ctx, &class)
-		if err != nil {
-			logger.Error(err, "Failed to create multi-namespaces", "class", class.Name)
-			return ctrl.Result{}, err
-		}
+		namespaces := r.createMultiNamespaces(ctx, &class)
 		createdNamespaces = namespaces
 	} else {
 		// Single-namespace mode: create one namespace
@@ -104,7 +101,12 @@ func (r *ClassReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		if class.Spec.StudentsGroup != "" {
 			users, err := r.getGroupUsers(ctx, class.Spec.StudentsGroup)
 			if err != nil {
-				logger.Info("Could not get group users, skipping RoleBinding reconciliation", "class", class.Name, "group", class.Spec.StudentsGroup, "error", err.Error())
+				logger.Info(
+					"Could not get group users, skipping RoleBinding reconciliation",
+					"class", class.Name,
+					"group", class.Spec.StudentsGroup,
+					"error", err.Error(),
+				)
 				// Don't fail the reconciliation - just skip RoleBinding reconciliation
 			} else {
 				// Reconcile RoleBindings - add new ones and remove old ones
@@ -274,9 +276,9 @@ func (r *ClassReconciler) ensureResourceQuota(
 		quantity, err := resource.ParseQuantity(class.Spec.ResourceQuota.PersistentVolumeClaims)
 		if err != nil {
 			logger.Error(
-			err, "Failed to parse PersistentVolumeClaims quantity",
-			"pvcs", class.Spec.ResourceQuota.PersistentVolumeClaims,
-		)
+				err, "Failed to parse PersistentVolumeClaims quantity",
+				"pvcs", class.Spec.ResourceQuota.PersistentVolumeClaims,
+			)
 			return err
 		}
 		hard[corev1.ResourcePersistentVolumeClaims] = quantity
@@ -338,6 +340,8 @@ func (r *ClassReconciler) ensureResourceQuota(
 
 // reconcileRoleBindings ensures RoleBindings match the current user list
 // It creates RoleBindings for new users and removes RoleBindings for users no longer in the list
+//
+//nolint:lll
 func (r *ClassReconciler) reconcileRoleBindings(ctx context.Context, namespaceName string, currentUsers []string) error {
 	logger := log.FromContext(ctx)
 
@@ -393,19 +397,24 @@ func (r *ClassReconciler) reconcileRoleBindings(ctx context.Context, namespaceNa
 }
 
 // createMultiNamespaces creates a namespace for each user in the students group
-func (r *ClassReconciler) createMultiNamespaces(ctx context.Context, class *nercv1alpha1.Class) ([]string, error) {
+func (r *ClassReconciler) createMultiNamespaces(ctx context.Context, class *nercv1alpha1.Class) []string {
 	logger := log.FromContext(ctx)
 
 	// Get users from the students group
 	users, err := r.getGroupUsers(ctx, class.Spec.StudentsGroup)
 	if err != nil {
-		logger.Info("Could not get group users, no namespaces will be created", "class", class.Name, "group", class.Spec.StudentsGroup, "error", err.Error())
-		return []string{}, nil
+		logger.Info(
+			"Could not get group users, no namespaces will be created",
+			"class", class.Name,
+			"group", class.Spec.StudentsGroup,
+			"error", err.Error(),
+		)
+		return []string{}
 	}
 
 	if len(users) == 0 {
 		logger.Info("No users found in group", "class", class.Name, "group", class.Spec.StudentsGroup)
-		return []string{}, nil
+		return []string{}
 	}
 
 	logger.Info("Creating namespaces for users", "class", class.Name, "userCount", len(users))
@@ -482,7 +491,7 @@ func (r *ClassReconciler) createMultiNamespaces(ctx context.Context, class *nerc
 		}
 	}
 
-	return createdNamespaces, nil
+	return createdNamespaces
 }
 
 // getGroupUsers retrieves users from an OpenShift group
