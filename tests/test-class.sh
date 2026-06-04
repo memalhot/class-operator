@@ -379,14 +379,22 @@ fi
 
 # Wait for reconciliation
 echo "Waiting for automatic reconciliation in single-namespace mode..."
-sleep 5
+TIMEOUT=30
+ELAPSED=0
+while [ $ELAPSED -lt $TIMEOUT ]; do
+    kubectl get rolebinding bob-edit -n $NAMESPACE_NAME > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        echo -e "${GREEN}✓ RoleBinding for removed user bob was deleted from shared namespace${NC}"
+        break
+    fi
+    sleep 2
+    ELAPSED=$((ELAPSED + 2))
+done
 
-# Verify bob's RoleBinding was deleted from single-namespace
+# Final check
 kubectl get rolebinding bob-edit -n $NAMESPACE_NAME > /dev/null 2>&1
-if [ $? -ne 0 ]; then
-    echo -e "${GREEN}✓ RoleBinding for removed user bob was deleted from shared namespace${NC}"
-else
-    echo -e "${RED}✗ RoleBinding for bob still exists in shared namespace${NC}"
+if [ $? -eq 0 ]; then
+    echo -e "${RED}✗ RoleBinding for bob still exists after ${TIMEOUT}s timeout${NC}"
     exit 1
 fi
 
