@@ -5,3 +5,46 @@ The class operator is a Kubernetes operator that will deploy the infrastructure 
 This operator will allow for class infrastructure to be easily deployed and managed through a declarative interface, enabling administrators to define class environments, user access, and resource policies in a scalable and reproducible way.
 
 ![alt text](images/image.png)
+
+
+## How to install the operator
+
+  1. Login to Quay.io
+
+  docker login quay.io -u <your-username>
+
+  2. Generate CRDs and Test
+
+  ### Generate/update CRD manifests
+  `make manifests`
+
+  ### Run tests
+  `make test`
+
+  3. Build and Push the Image
+
+  ### Build the image
+  `make docker-build`
+
+  ### Push to quay.io
+  `make docker-push`
+
+  4. Give user permissions to deploy
+  
+  `cd` into folder `user` and add your username to the rolebinding
+
+  ### Add Username
+  ```
+    - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    # ADD YOUR USERNAME HERE!!!!
+    name: username
+  ```
+
+  then run
+
+ `oc apply -f perm.yaml --as system:admin && cd ..`
+
+ 5. Deploy Operator
+  
+  `make deploy`

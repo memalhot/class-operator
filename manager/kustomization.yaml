@@ -10,5 +10,5 @@ resources:
 
 images:
 - name: class-operator
-  newName: class-operator
+  newName: quay.io/memalhot/class-operator
   newTag: latest

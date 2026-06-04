@@ -1,7 +1,7 @@
 REGISTRY ?= quay.io
 QUAY_USER ?= memalhot
 IMAGE_NAME ?= class-operator
-TAG ?= $(shell git rev-parse --short HEAD)
+TAG ?= latest
 
 # Image URL to use all building/pushing image targets
 IMG ?= $(REGISTRY)/$(QUAY_USER)/$(IMAGE_NAME):$(TAG)
@@ -78,8 +78,9 @@ uninstall: manifests ## Uninstall CRDs from the cluster.
 
 .PHONY: deploy
 deploy: manifests ## Deploy controller to the cluster.
-	cd manager && kubectl apply -k . && \
-	kubectl set image deployment/class-operator-controller-manager manager=${IMG} -n class-operator-system
+	cd manager && \
+	kustomize edit set image class-operator=${IMG} && \
+	kubectl apply -k .
 
 .PHONY: undeploy
 undeploy: ## Undeploy controller from the cluster.

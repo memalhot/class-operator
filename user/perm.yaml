@@ -1,0 +1,192 @@
+---
+# ClusterRole for operator installer
+# This grants permissions needed to install and manage the class-operator
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: class-operator-installer
+rules:
+# Permission to create and manage namespaces
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+# Permission to create and manage service accounts
+- apiGroups:
+  - ""
+  resources:
+  - serviceaccounts
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+# Permission to create and manage cluster roles
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - clusterroles
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+# Permission to create and manage cluster role bindings
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - clusterrolebindings
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+# Permission to create and manage roles
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - roles
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+# Permission to create and manage role bindings
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - rolebindings
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+# Permission to create and manage deployments
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+# Permission to manage CRDs
+- apiGroups:
+  - apiextensions.k8s.io
+  resources:
+  - customresourcedefinitions
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+# Permission to create events
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+# Permission to manage resource quotas
+- apiGroups:
+  - ""
+  resources:
+  - resourcequotas
+  verbs:
+  - create
+  - delete
+  - patch
+  - update
+# Permission to manage cronjobs
+- apiGroups:
+  - batch
+  resources:
+  - cronjobs
+  verbs:
+  - create
+  - delete
+  - patch
+  - update
+# Permission to manage notebooks
+- apiGroups:
+  - kubeflow.org
+  resources:
+  - notebooks
+  verbs:
+  - update
+  - patch
+# Permission to manage Class CRs
+- apiGroups:
+  - nerc.mghpcc.org
+  resources:
+  - classes
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+# Permission to manage Class finalizers
+- apiGroups:
+  - nerc.mghpcc.org
+  resources:
+  - classes/finalizers
+  verbs:
+  - update
+# Permission to manage Class status
+- apiGroups:
+  - nerc.mghpcc.org
+  resources:
+  - classes/status
+  verbs:
+  - get
+  - patch
+  - update
+---
+# ClusterRoleBinding to grant the installer role to user memalhot
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: class-operator-installer-memalhot
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: class-operator-installer
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: User
+  # ADD YOUR USERNAME HERE!!!!
+  name: $USERNAME
