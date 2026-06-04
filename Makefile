@@ -78,7 +78,8 @@ uninstall: manifests ## Uninstall CRDs from the cluster.
 
 .PHONY: deploy
 deploy: manifests ## Deploy controller to the cluster.
-	cd manager && kubectl apply -k .
+	cd manager && kubectl apply -k . && \
+	kubectl set image deployment/class-operator-controller-manager manager=${IMG} -n class-operator-system
 
 .PHONY: undeploy
 undeploy: ## Undeploy controller from the cluster.
