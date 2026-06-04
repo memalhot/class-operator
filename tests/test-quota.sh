@@ -108,7 +108,7 @@ echo ""
 
 # Step 4: Create test group
 echo -e "${YELLOW}[4/10] Creating test OpenShift group...${NC}"
-kubectl apply -f samples/test-group.yaml
+kubectl apply -f tests/test-samples/test-group.yaml
 kubectl get group students -o yaml | grep -A 5 "users:"
 echo -e "${GREEN}✓ Test group created${NC}"
 echo ""
@@ -131,7 +131,7 @@ echo ""
 
 # Step 6: Test multi-namespace class creates ResourceQuotas
 echo -e "${YELLOW}[6/10] Testing ResourceQuota creation in multi-namespace mode...${NC}"
-kubectl apply -f samples/multi-namespace-class.yaml
+kubectl apply -f tests/test-samples/multi-namespace-class.yaml
 sleep 5
 
 # Verify multi-namespaces were created
@@ -196,7 +196,7 @@ echo ""
 
 # Step 7: Test single-namespace class does NOT create ResourceQuota
 echo -e "${YELLOW}[7/10] Testing that single-namespace mode does NOT create ResourceQuota...${NC}"
-kubectl apply -f samples/single-namespace-class.yaml
+kubectl apply -f tests/test-samples/single-namespace-class.yaml
 sleep 3
 
 # Get the namespace name

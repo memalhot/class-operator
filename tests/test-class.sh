@@ -108,7 +108,7 @@ echo ""
 
 # Step 4: Create test group
 echo -e "${YELLOW}[4/11] Creating test OpenShift group...${NC}"
-kubectl apply -f samples/test-group.yaml
+kubectl apply -f tests/test-samples/test-group.yaml
 kubectl get group students -o yaml | grep -A 5 "users:"
 echo -e "${GREEN}✓ Test group created${NC}"
 echo ""
@@ -131,7 +131,7 @@ echo ""
 
 # Step 6: Test single-namespace class
 echo -e "${YELLOW}[6/11] Testing single-namespace class creation...${NC}"
-kubectl apply -f samples/single-namespace-class.yaml
+kubectl apply -f tests/test-samples/single-namespace-class.yaml
 sleep 3
 
 # Verify single-namespace
@@ -192,7 +192,7 @@ echo ""
 
 # Step 7: Test multi-namespace class
 echo -e "${YELLOW}[7/11] Testing multi-namespace class creation...${NC}"
-kubectl apply -f samples/multi-namespace-class.yaml
+kubectl apply -f tests/test-samples/multi-namespace-class.yaml
 sleep 5
 
 # Verify multi-namespaces
