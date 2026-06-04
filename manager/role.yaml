@@ -89,9 +89,25 @@ rules:
   - update
   - watch
 - apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - clusterroles
+  resourceNames:
+  - edit
+  verbs:
+  - bind
+- apiGroups:
   - ""
   resources:
   - events
   verbs:
   - create
   - patch
+- apiGroups:
+  - user.openshift.io
+  resources:
+  - groups
+  verbs:
+  - get
+  - list
+  - watch

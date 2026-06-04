@@ -48,3 +48,7 @@ This operator will allow for class infrastructure to be easily deployed and mana
  5. Deploy Operator
   
   `make deploy`
+
+ 6. Install CRD
+  
+  `make install`

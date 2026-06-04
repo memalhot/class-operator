@@ -80,11 +80,11 @@ uninstall: manifests ## Uninstall CRDs from the cluster.
 deploy: manifests ## Deploy controller to the cluster.
 	cd manager && \
 	kustomize edit set image class-operator=${IMG} && \
-	kubectl apply -k .
+	kubectl apply -k . --as system:admin
 
 .PHONY: undeploy
 undeploy: ## Undeploy controller from the cluster.
-	cd manager && kubectl delete -k .
+	cd manager && kubectl delete -k . --as system:admin
 
 ##@ Build Dependencies
 

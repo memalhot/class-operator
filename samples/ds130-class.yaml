@@ -1,23 +1,23 @@
 apiVersion: nerc.mghpcc.org/v1alpha1
 kind: Class
 metadata:
-  name: multi-test-class
+  name: ds130-class
   namespace: default
 spec:
-  classCode: "CS202"
+  classCode: "DS130"
   semester: "Spring2026"
-  displayName: "Multi-Namespace Test Class"
+  displayName: "Data Science 130"
   professors:
     - "professor@university.edu"
 
   # Multi-namespace deployment - creates namespace per user
   deployment:
     multiNamespace: true
-    namespaceTemplate: "cs202-{{.Username}}"
-    studentNamespacePrefix: "cs202-"
+    namespaceTemplate: "ds130-{{.Username}}"
+    studentNamespacePrefix: "ds130-"
 
   # OpenShift group containing students
-  studentsGroup: "students"
+  studentsGroup: "ds130"
 
   resourceQuota:
     cpu: "2"

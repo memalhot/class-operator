@@ -89,8 +89,11 @@ func (r *ClassReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		namespaces := r.createMultiNamespaces(ctx, &class)
 		createdNamespaces = namespaces
 	} else {
-		// Single-namespace mode: create one namespace
-		namespaceName := generateNamespaceName(class.Spec.ClassCode, class.Spec.Semester)
+		// Single-namespace mode: use specified namespace or generate one
+		namespaceName := class.Spec.Deployment.NamespaceTemplate
+		if namespaceName == "" {
+			namespaceName = generateNamespaceName(class.Spec.ClassCode, class.Spec.Semester)
+		}
 		logger.Info("Processing single-namespace class", "class", class.Name, "namespace", namespaceName)
 
 		if err := r.ensureNamespace(ctx, &class, namespaceName); err != nil {
