@@ -1,0 +1,29 @@
+apiVersion: nerc.mghpcc.org/v1alpha1
+kind: Class
+metadata:
+  name: ds130-class
+  namespace: default
+spec:
+  classCode: "DS130"
+  semester: "Spring2026"
+  displayName: "Data Science 130"
+  professors:
+    - "professor@university.edu"
+
+  # Multi-namespace deployment - creates namespace per user
+  deployment:
+    multiNamespace: true
+    namespaceTemplate: "ds130-{{.Username}}"
+    studentNamespacePrefix: "ds130-"
+
+  # OpenShift group containing students
+  studentsGroup: "ds130"
+
+  resourceQuota:
+    cpu: "2"
+    memory: "4Gi"
+    pods: "5"
+
+  notebookCulling:
+    enabled: true
+    cutoff: 3600

@@ -1,0 +1,23 @@
+apiVersion: nerc.mghpcc.org/v1alpha1
+kind: Class
+metadata:
+  name: cs667-class
+  namespace: default
+spec:
+  classCode: "CS667"
+  semester: "Spring2026"
+  displayName: "Computer Science 667"
+  professors:
+    - "professor@university.edu"
+
+  # Single namespace deployment - all students share rhods-notebooks namespace
+  deployment:
+    multiNamespace: false
+    namespace: "rhods-notebooks"
+
+  # OpenShift group containing students
+  studentsGroup: "cs667"
+
+  notebookCulling:
+    enabled: true
+    cutoff: 3600

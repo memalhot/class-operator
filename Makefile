@@ -41,7 +41,7 @@ vet: ## Run go vet against code.
 
 .PHONY: test
 test: ## Run tests.
-	go test ./... -coverprofile cover.out
+	go test -coverprofile cover.out $$(go list ./... | grep -v '/v1alpha1$$' | grep -v 'github.com/memalhot/class-operator$$')
 
 ##@ Build
 
