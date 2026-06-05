@@ -29,26 +29,10 @@ This operator will allow for class infrastructure to be easily deployed and mana
   ### Push to quay.io
   `make docker-push`
 
-  4. Give user permissions to deploy
-  
-  `cd` into folder `user` and add your username to the rolebinding
-
-  ### Add Username
-  ```
-    - apiGroup: rbac.authorization.k8s.io
-    kind: User
-    # ADD YOUR USERNAME HERE!!!!
-    name: username
-  ```
-
-  then run
-
- `oc apply -f perm.yaml --as system:admin && cd ..`
-
- 5. Deploy Operator
+ 4. Deploy Operator
   
   `make deploy`
 
- 6. Install CRD
+ 5. Install CRD
   
   `make install`
