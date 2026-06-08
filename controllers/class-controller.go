@@ -539,6 +539,12 @@ func (r *ClassReconciler) deleteNamespaces(ctx context.Context, class *nercv1alp
 	logger.Info("Deleting namespaces for class", "class", class.Name, "count", len(class.Status.Namespaces))
 
 	for _, namespaceName := range class.Status.Namespaces {
+		// Delete all RoleBindings managed by class-operator in this namespace first
+		if err := r.deleteRoleBindings(ctx, namespaceName); err != nil {
+			logger.Error(err, "Failed to delete RoleBindings", "namespace", namespaceName)
+			// Continue with namespace deletion even if RoleBinding cleanup fails
+		}
+
 		namespace := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: namespaceName,
@@ -554,6 +560,45 @@ func (r *ClassReconciler) deleteNamespaces(ctx context.Context, class *nercv1alp
 			return err
 		}
 		logger.Info("Deleted namespace", "namespace", namespaceName)
+	}
+
+	return nil
+}
+
+// deleteRoleBindings deletes all RoleBindings managed by class-operator in a namespace
+func (r *ClassReconciler) deleteRoleBindings(ctx context.Context, namespaceName string) error {
+	logger := log.FromContext(ctx)
+
+	// Get all RoleBindings in the namespace managed by class-operator
+	roleBindingList := &rbacv1.RoleBindingList{}
+	if err := r.List(ctx, roleBindingList, client.InNamespace(namespaceName), client.MatchingLabels{
+		"nerc.mghpcc.org/managed-by": "class-operator",
+	}); err != nil {
+		if errors.IsNotFound(err) {
+			logger.V(1).Info("No RoleBindings to delete", "namespace", namespaceName)
+			return nil
+		}
+		logger.Error(err, "Failed to list RoleBindings", "namespace", namespaceName)
+		return err
+	}
+
+	if len(roleBindingList.Items) == 0 {
+		logger.V(1).Info("No RoleBindings to delete", "namespace", namespaceName)
+		return nil
+	}
+
+	logger.Info("Deleting RoleBindings in namespace", "namespace", namespaceName, "count", len(roleBindingList.Items))
+
+	for _, rb := range roleBindingList.Items {
+		if err := r.Delete(ctx, &rb); err != nil {
+			if errors.IsNotFound(err) {
+				logger.V(1).Info("RoleBinding already deleted", "name", rb.Name, "namespace", namespaceName)
+				continue
+			}
+			logger.Error(err, "Failed to delete RoleBinding", "name", rb.Name, "namespace", namespaceName)
+			return err
+		}
+		logger.Info("Deleted RoleBinding", "name", rb.Name, "namespace", namespaceName)
 	}
 
 	return nil
