@@ -20,4 +20,4 @@ spec:
 
   notebookCulling:
     enabled: true
-    cutoff: 900
+    cutoff: 600

@@ -77,6 +77,38 @@ func getNotebookUsername(notebook *unstructured.Unstructured) string {
 	return ""
 }
 
+// getNotebookRunningStartTime extracts the running container start time from notebook status
+// Returns the time when the notebook container started running, or zero time if not running
+func getNotebookRunningStartTime(notebook *unstructured.Unstructured) (time.Time, error) {
+	// Navigate to .status.containerState.running.startedAt
+	status, found, err := unstructured.NestedMap(notebook.Object, "status")
+	if err != nil || !found {
+		return time.Time{}, fmt.Errorf("status not found")
+	}
+
+	containerState, found, err := unstructured.NestedMap(status, "containerState")
+	if err != nil || !found {
+		return time.Time{}, fmt.Errorf("containerState not found")
+	}
+
+	running, found, err := unstructured.NestedMap(containerState, "running")
+	if err != nil || !found {
+		return time.Time{}, fmt.Errorf("notebook not running")
+	}
+
+	startedAtStr, found, err := unstructured.NestedString(running, "startedAt")
+	if err != nil || !found {
+		return time.Time{}, fmt.Errorf("startedAt not found")
+	}
+
+	startedAt, err := time.Parse(time.RFC3339, startedAtStr)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to parse startedAt: %w", err)
+	}
+
+	return startedAt, nil
+}
+
 // buildUserCutoffMap creates a map of username -> cutoff info from all classes in a namespace
 // If a user is in multiple classes, the higher (more lenient) cutoff wins
 func (r *ClassCullerReconciler) buildUserCutoffMap(
@@ -285,20 +317,29 @@ func (r *ClassCullerReconciler) cullNotebooksMultiNamespace(
 			continue
 		}
 
-		// User is in the class group - check cutoff
+		// User is in the class group - check cutoff based on running time
+		startedAt, err := getNotebookRunningStartTime(&notebook)
+		if err != nil {
+			// Notebook is not running or status unavailable, skip culling
+			logger.V(1).Info("Notebook not running or status unavailable, skipping",
+				"notebook", notebookName,
+				"namespace", namespace,
+				"error", err.Error())
+			continue
+		}
+
 		cutoffDuration := time.Duration(cutoff) * time.Second
-		creationTime := notebook.GetCreationTimestamp().Time
-		ageSeconds := now.Sub(creationTime).Seconds()
+		runningSeconds := now.Sub(startedAt).Seconds()
 		cutoffSeconds := cutoffDuration.Seconds()
 
-		// Check if notebook has exceeded the cutoff time
-		if ageSeconds > cutoffSeconds {
+		// Check if notebook has exceeded the cutoff time since it started running
+		if runningSeconds > cutoffSeconds {
 			logger.Info("Stopping notebook that exceeded cutoff time",
 				"notebook", notebookName,
 				"namespace", namespace,
 				"class", class.Name,
 				"user", username,
-				"age", fmt.Sprintf("%.0fs", ageSeconds),
+				"runningTime", fmt.Sprintf("%.0fs", runningSeconds),
 				"cutoff", fmt.Sprintf("%.0fs", cutoffSeconds))
 
 			// Add annotation to stop the notebook
@@ -320,7 +361,7 @@ func (r *ClassCullerReconciler) cullNotebooksMultiNamespace(
 				"notebook", notebookName,
 				"namespace", namespace,
 				"user", username,
-				"age", fmt.Sprintf("%.0fs", ageSeconds),
+				"runningTime", fmt.Sprintf("%.0fs", runningSeconds),
 				"cutoff", fmt.Sprintf("%.0fs", cutoffSeconds))
 		}
 	}
@@ -430,20 +471,29 @@ func (r *ClassCullerReconciler) cullNotebooksInNamespace(ctx context.Context, na
 			continue
 		}
 
-		// User is in a class group - use their specific cutoff
+		// User is in a class group - use their specific cutoff based on running time
+		startedAt, err := getNotebookRunningStartTime(&notebook)
+		if err != nil {
+			// Notebook is not running or status unavailable, skip culling
+			logger.V(1).Info("Notebook not running or status unavailable, skipping",
+				"notebook", notebookName,
+				"namespace", namespace,
+				"error", err.Error())
+			continue
+		}
+
 		userCutoffDuration := time.Duration(userInfo.Cutoff) * time.Second
-		creationTime := notebook.GetCreationTimestamp().Time
-		ageSeconds := now.Sub(creationTime).Seconds()
+		runningSeconds := now.Sub(startedAt).Seconds()
 		cutoffSeconds := userCutoffDuration.Seconds()
 
-		// Check if notebook has exceeded the user's cutoff time
-		if ageSeconds > cutoffSeconds {
+		// Check if notebook has exceeded the user's cutoff time since it started running
+		if runningSeconds > cutoffSeconds {
 			logger.Info("Stopping notebook that exceeded user's cutoff time",
 				"notebook", notebookName,
 				"namespace", namespace,
 				"user", username,
 				"class", userInfo.ClassName,
-				"age", fmt.Sprintf("%.0fs", ageSeconds),
+				"runningTime", fmt.Sprintf("%.0fs", runningSeconds),
 				"cutoff", fmt.Sprintf("%.0fs", cutoffSeconds))
 
 			// Add annotation to stop the notebook
@@ -465,7 +515,7 @@ func (r *ClassCullerReconciler) cullNotebooksInNamespace(ctx context.Context, na
 				"notebook", notebookName,
 				"namespace", namespace,
 				"user", username,
-				"age", fmt.Sprintf("%.0fs", ageSeconds),
+				"runningTime", fmt.Sprintf("%.0fs", runningSeconds),
 				"cutoff", fmt.Sprintf("%.0fs", cutoffSeconds))
 		}
 	}
