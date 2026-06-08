@@ -469,7 +469,7 @@ func TestReconcileRoleBindings_AddsNewUsers(t *testing.T) {
 	reconciler, fakeClient := setupReconciler(t, class, namespace)
 
 	ctx := context.Background()
-	err := reconciler.reconcileRoleBindings(ctx, "test-namespace", []string{"alice", "bob"})
+	err := reconciler.reconcileRoleBindings(ctx, "test-class", "test-namespace", []string{"alice", "bob"})
 	if err != nil {
 		t.Fatalf("reconcileRoleBindings failed: %v", err)
 	}
@@ -527,7 +527,7 @@ func TestReconcileRoleBindings_RemovesOldUsers(t *testing.T) {
 	reconciler, fakeClient := setupReconciler(t, class, namespace, oldRoleBinding)
 
 	ctx := context.Background()
-	err := reconciler.reconcileRoleBindings(ctx, "test-namespace", []string{"alice", "bob"})
+	err := reconciler.reconcileRoleBindings(ctx, "test-class", "test-namespace", []string{"alice", "bob"})
 	if err != nil {
 		t.Fatalf("reconcileRoleBindings failed: %v", err)
 	}
@@ -1043,7 +1043,7 @@ func TestEnsureRoleBinding_AlreadyExists(t *testing.T) {
 
 	reconciler, fakeClient := setupReconciler(t, class, namespace, existingRB)
 
-	err := reconciler.ensureRoleBinding(context.Background(), "test-namespace", "alice")
+	err := reconciler.ensureRoleBinding(context.Background(), "test-class", "test-namespace", "alice")
 	if err != nil {
 		t.Errorf("ensureRoleBinding should not error when RoleBinding exists, got: %v", err)
 	}
@@ -1349,7 +1349,7 @@ func TestReconcileRoleBindings_WithWhitespace(t *testing.T) {
 	reconciler, fakeClient := setupReconciler(t, class, namespace)
 
 	ctx := context.Background()
-	err := reconciler.reconcileRoleBindings(ctx, "test-namespace", []string{" alice ", "  bob  ", ""})
+	err := reconciler.reconcileRoleBindings(ctx, "test-class", "test-namespace", []string{" alice ", "  bob  ", ""})
 	if err != nil {
 		t.Fatalf("reconcileRoleBindings failed: %v", err)
 	}
@@ -1663,7 +1663,7 @@ func TestReconcileRoleBindings_SkipsNonManagedRoleBindings(t *testing.T) {
 	reconciler, fakeClient := setupReconciler(t, class, namespace, nonManagedRB)
 
 	ctx := context.Background()
-	err := reconciler.reconcileRoleBindings(ctx, "test-namespace", []string{"bob"})
+	err := reconciler.reconcileRoleBindings(ctx, "test-class", "test-namespace", []string{"bob"})
 	if err != nil {
 		t.Fatalf("reconcileRoleBindings failed: %v", err)
 	}
@@ -1710,7 +1710,7 @@ func TestReconcileRoleBindings_SkipsNonEditRoleBindings(t *testing.T) {
 	reconciler, fakeClient := setupReconciler(t, class, namespace, customRB)
 
 	ctx := context.Background()
-	err := reconciler.reconcileRoleBindings(ctx, "test-namespace", []string{"bob"})
+	err := reconciler.reconcileRoleBindings(ctx, "test-class", "test-namespace", []string{"bob"})
 	if err != nil {
 		t.Fatalf("reconcileRoleBindings failed: %v", err)
 	}

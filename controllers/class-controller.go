@@ -113,7 +113,7 @@ func (r *ClassReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 				// Don't fail the reconciliation - just skip RoleBinding reconciliation
 			} else {
 				// Reconcile RoleBindings - add new ones and remove old ones
-				if err := r.reconcileRoleBindings(ctx, namespaceName, users); err != nil {
+				if err := r.reconcileRoleBindings(ctx, class.Name, namespaceName, users); err != nil {
 					logger.Error(err, "Failed to reconcile RoleBindings in shared namespace", "namespace", namespaceName)
 					// Continue even if reconciliation fails
 				}
@@ -176,7 +176,8 @@ func (r *ClassReconciler) ensureNamespace(ctx context.Context, class *nercv1alph
 }
 
 // ensureRoleBinding creates a RoleBinding if it doesn't exist to grant edit permissions to a user
-func (r *ClassReconciler) ensureRoleBinding(ctx context.Context, namespaceName, username string) error {
+// RoleBindings are shared across all classes - a user gets access if they're in ANY class
+func (r *ClassReconciler) ensureRoleBinding(ctx context.Context, className, namespaceName, username string) error {
 	logger := log.FromContext(ctx)
 
 	roleBindingName := fmt.Sprintf("%s-edit", username)
@@ -186,7 +187,7 @@ func (r *ClassReconciler) ensureRoleBinding(ctx context.Context, namespaceName, 
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Create the RoleBinding
-			logger.Info("Creating RoleBinding for user", "user", username, "namespace", namespaceName)
+			logger.Info("Creating RoleBinding for user", "user", username, "namespace", namespaceName, "class", className)
 
 			roleBinding = &rbacv1.RoleBinding{
 				ObjectMeta: metav1.ObjectMeta{
@@ -220,6 +221,7 @@ func (r *ClassReconciler) ensureRoleBinding(ctx context.Context, namespaceName, 
 			return err
 		}
 	} else {
+		// RoleBinding exists - just log it (shared across all classes)
 		logger.V(1).Info("RoleBinding already exists", "user", username, "namespace", namespaceName)
 	}
 
@@ -342,10 +344,11 @@ func (r *ClassReconciler) ensureResourceQuota(
 }
 
 // reconcileRoleBindings ensures RoleBindings match the current user list
-// It creates RoleBindings for new users and removes RoleBindings for users no longer in the list
+// It creates RoleBindings for new users and removes RoleBindings for users no longer in ANY class
+// RoleBindings are shared - a user keeps access if they're in ANY class using this namespace
 //
 //nolint:lll
-func (r *ClassReconciler) reconcileRoleBindings(ctx context.Context, namespaceName string, currentUsers []string) error {
+func (r *ClassReconciler) reconcileRoleBindings(ctx context.Context, className, namespaceName string, currentUsers []string) error {
 	logger := log.FromContext(ctx)
 
 	// Create a set of current usernames for quick lookup
@@ -354,6 +357,37 @@ func (r *ClassReconciler) reconcileRoleBindings(ctx context.Context, namespaceNa
 		username = strings.TrimSpace(username)
 		if username != "" {
 			currentUserSet[username] = true
+		}
+	}
+
+	// Build a set of ALL users from ALL classes using this namespace
+	allUsersInNamespace := make(map[string]bool)
+	classList := &nercv1alpha1.ClassList{}
+	if err := r.List(ctx, classList); err != nil {
+		logger.Error(err, "Failed to list classes")
+		return err
+	}
+
+	for _, class := range classList.Items {
+		// Check if this class uses this namespace
+		var classNamespace string
+		if class.Spec.Deployment.MultiNamespace {
+			// Multi-namespace classes don't use this reconciliation path
+			continue
+		} else {
+			classNamespace = class.Spec.Deployment.NamespaceTemplate
+			if classNamespace == "" {
+				classNamespace = generateNamespaceName(class.Spec.ClassCode, class.Spec.Semester)
+			}
+		}
+
+		if classNamespace == namespaceName && class.Spec.StudentsGroup != "" {
+			users, err := r.getGroupUsers(ctx, class.Spec.StudentsGroup)
+			if err == nil {
+				for _, user := range users {
+					allUsersInNamespace[strings.TrimSpace(user)] = true
+				}
+			}
 		}
 	}
 
@@ -366,7 +400,7 @@ func (r *ClassReconciler) reconcileRoleBindings(ctx context.Context, namespaceNa
 		return err
 	}
 
-	// Remove RoleBindings for users no longer in the group
+	// Remove RoleBindings for users not in ANY class using this namespace
 	for _, rb := range roleBindingList.Items {
 		// Extract username from RoleBinding name (format: {username}-edit)
 		if !strings.HasSuffix(rb.Name, "-edit") {
@@ -374,9 +408,9 @@ func (r *ClassReconciler) reconcileRoleBindings(ctx context.Context, namespaceNa
 		}
 		username := strings.TrimSuffix(rb.Name, "-edit")
 
-		if !currentUserSet[username] {
-			// User is no longer in the group, delete the RoleBinding
-			logger.Info("Removing RoleBinding for user no longer in group", "user", username, "namespace", namespaceName)
+		if !allUsersInNamespace[username] {
+			// User is not in ANY class using this namespace, delete the RoleBinding
+			logger.Info("Removing RoleBinding for user not in any class", "user", username, "namespace", namespaceName)
 			if err := r.Delete(ctx, &rb); err != nil {
 				if !errors.IsNotFound(err) {
 					logger.Error(err, "Failed to delete RoleBinding", "user", username, "namespace", namespaceName)
@@ -390,7 +424,7 @@ func (r *ClassReconciler) reconcileRoleBindings(ctx context.Context, namespaceNa
 
 	// Create RoleBindings for current users
 	for username := range currentUserSet {
-		if err := r.ensureRoleBinding(ctx, namespaceName, username); err != nil {
+		if err := r.ensureRoleBinding(ctx, className, namespaceName, username); err != nil {
 			logger.Error(err, "Failed to ensure RoleBinding for user", "user", username, "namespace", namespaceName)
 			// Continue with other users even if one fails
 		}
@@ -450,7 +484,7 @@ func (r *ClassReconciler) createMultiNamespaces(ctx context.Context, class *nerc
 		}
 
 		// Reconcile RoleBindings for this user's namespace (should only have this one user)
-		if err := r.reconcileRoleBindings(ctx, namespaceName, []string{username}); err != nil {
+		if err := r.reconcileRoleBindings(ctx, class.Name, namespaceName, []string{username}); err != nil {
 			logger.Error(err, "Failed to reconcile RoleBindings for user", "user", username, "namespace", namespaceName)
 			// Don't skip adding to createdNamespaces - namespace exists even if RoleBinding failed
 		}
