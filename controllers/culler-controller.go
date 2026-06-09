@@ -415,7 +415,7 @@ func (r *ClassCullerReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Requeue after a reasonable interval to check again
-	return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
+	return ctrl.Result{RequeueAfter: time.Minute * 30}, nil
 }
 
 func (r *ClassCullerReconciler) cullNotebooksInNamespace(ctx context.Context, namespace string, now time.Time) error {
