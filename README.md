@@ -9,30 +9,30 @@ This operator will allow for class infrastructure to be easily deployed and mana
 
 ## How to install the operator
 
-  1. Login to Quay.io
+1. Login into docker and openshift
 
-  docker login quay.io -u <your-username>
+    `docker login quay.io -u <your-username>`
 
-  2. Generate CRDs and Test
+    `oc login --token=<you-token> --server=<your-server>`
 
-  ### Generate/update CRD manifests
-  `make manifests`
+2. Generate CRDs and Test
 
-  ### Run tests
-  `make test`
+    `make manifests`
 
-  3. Build and Push the Image
+3. Run tests
 
-  ### Build the image
-  `make docker-build`
+    `make test`
 
-  ### Push to quay.io
-  `make docker-push`
+4. Build and Push the Image
 
- 4. Deploy Operator
+    `make docker-build`
+
+    `make docker-push`
+
+5. Deploy Operator
   
-  `make deploy`
+    `make deploy`
 
- 5. Install CRD
+6. Install CRD
   
-  `make install`
+    `make install`
