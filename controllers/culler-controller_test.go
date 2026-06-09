@@ -63,6 +63,19 @@ func createNotebook(name, namespace, username string, creationTime time.Time, st
 	}
 
 	notebook.SetAnnotations(annotations)
+
+	// Set the running status with startedAt time
+	// This is required for the controller to check running time
+	if !stopped {
+		_ = unstructured.SetNestedMap(notebook.Object, map[string]interface{}{
+			"containerState": map[string]interface{}{
+				"running": map[string]interface{}{
+					"startedAt": creationTime.UTC().Format(time.RFC3339),
+				},
+			},
+		}, "status")
+	}
+
 	return notebook
 }
 
