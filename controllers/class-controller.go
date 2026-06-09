@@ -237,7 +237,7 @@ func (r *ClassReconciler) ensureResourceQuota(
 	// Skip if no resource quota is specified
 	if class.Spec.ResourceQuota.CPU == "" && class.Spec.ResourceQuota.Memory == "" &&
 		class.Spec.ResourceQuota.Pods == "" && class.Spec.ResourceQuota.PersistentVolumeClaims == "" &&
-		class.Spec.ResourceQuota.GPUs == "" {
+		class.Spec.ResourceQuota.GPUs == "" && class.Spec.ResourceQuota.Storage == "" {
 		logger.V(1).Info("No resource quota specified, skipping", "namespace", namespaceName)
 		return nil
 	}
@@ -296,6 +296,15 @@ func (r *ClassReconciler) ensureResourceQuota(
 			return err
 		}
 		hard[corev1.ResourceName("requests.nvidia.com/gpu")] = quantity
+	}
+
+	if class.Spec.ResourceQuota.Storage != "" {
+		quantity, err := resource.ParseQuantity(class.Spec.ResourceQuota.Storage)
+		if err != nil {
+			logger.Error(err, "Failed to parse Storage quantity", "storage", class.Spec.ResourceQuota.Storage)
+			return err
+		}
+		hard[corev1.ResourceRequestsStorage] = quantity
 	}
 
 	if err != nil {

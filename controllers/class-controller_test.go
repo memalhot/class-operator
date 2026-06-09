@@ -1184,6 +1184,48 @@ func TestEnsureResourceQuota_WithGPUsAndPVCs(t *testing.T) {
 	}
 }
 
+func TestEnsureResourceQuota_WithStorage(t *testing.T) {
+	class := &nercv1alpha1.Class{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-class",
+			Namespace: "default",
+		},
+		Spec: nercv1alpha1.ClassSpec{
+			ClassCode: "CS101",
+			ResourceQuota: nercv1alpha1.ResourceQuotaSpec{
+				Storage: "100Gi",
+			},
+		},
+	}
+
+	namespace := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-namespace",
+		},
+	}
+
+	reconciler, fakeClient := setupReconciler(t, class, namespace)
+
+	err := reconciler.ensureResourceQuota(context.Background(), class, "test-namespace")
+	if err != nil {
+		t.Fatalf("ensureResourceQuota failed: %v", err)
+	}
+
+	quota := &corev1.ResourceQuota{}
+	if err := fakeClient.Get(context.Background(), types.NamespacedName{
+		Name:      "class-quota",
+		Namespace: "test-namespace",
+	}, quota); err != nil {
+		t.Fatalf("Failed to get ResourceQuota: %v", err)
+	}
+
+	expectedStorage := resource.MustParse("100Gi")
+
+	if !quota.Spec.Hard[corev1.ResourceRequestsStorage].Equal(expectedStorage) {
+		t.Errorf("Expected Storage quota %v, got %v", expectedStorage, quota.Spec.Hard[corev1.ResourceRequestsStorage])
+	}
+}
+
 func TestEnsureResourceQuota_InvalidQuantity(t *testing.T) {
 	class := &nercv1alpha1.Class{
 		ObjectMeta: metav1.ObjectMeta{

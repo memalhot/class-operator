@@ -16,6 +16,7 @@ type ResourceQuotaSpec struct {
 	Pods                   string `json:"pods,omitempty"`
 	PersistentVolumeClaims string `json:"persistentvolumeclaims,omitempty"`
 	GPUs                   string `json:"requests.nvidia.com/gpu,omitempty"`
+	Storage                string `json:"requests.storage,omitempty"`
 }
 
 type StorageSpec struct {
